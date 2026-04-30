@@ -13,6 +13,7 @@ import org.springframework.ai.transformer.splitter.TokenTextSplitter;
 import org.springframework.ai.vectorstore.VectorStore;
 import org.springframework.kafka.annotation.KafkaListener;
 import org.springframework.stereotype.Component;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
@@ -22,6 +23,13 @@ import java.util.Map;
 @RequiredArgsConstructor
 @Slf4j
 public class IngestionConsumer {
+
+    // Minimum tokens per chunk
+    private static final int MIN_CHUNK_SIZE = 5;
+    // Maximum tokens per chunk
+    private static final int MAX_CHUNK_SIZE = 10000;
+    // Keep token boundaries intact
+    private static final boolean KEEP_SEPARATOR = true;
 
     private final DocumentRepository documentRepository;
     private final KnowledgeBaseService kbService;
@@ -46,7 +54,7 @@ public class IngestionConsumer {
             List<org.springframework.ai.document.Document> rawDocs = reader.get();
 
             TokenTextSplitter splitter = new TokenTextSplitter(kb.getChunkSize(), kb.getChunkOverlap(),
-                5, 10000, true);
+                MIN_CHUNK_SIZE, MAX_CHUNK_SIZE, KEEP_SEPARATOR);
             List<org.springframework.ai.document.Document> chunks = splitter.apply(rawDocs);
 
             chunks.forEach(chunk -> chunk.getMetadata().putAll(Map.of(
@@ -55,6 +63,9 @@ public class IngestionConsumer {
                 "document_name", doc.getName()
             )));
 
+            // NOTE: vectorStore.add() is not part of the JPA transaction.
+            // If the transaction rolls back after this point, orphan vectors may remain.
+            // This implements at-least-once semantics: reprocessing will create duplicates.
             vectorStore.add(chunks);
 
             doc.setStatus(DocumentStatus.DONE);
@@ -64,10 +75,17 @@ public class IngestionConsumer {
 
         } catch (Exception e) {
             log.error("Ingestion failed for document {}", doc.getId(), e);
-            doc.setStatus(DocumentStatus.FAILED);
-            doc.setErrorMessage(e.getMessage());
-            documentRepository.save(doc);
+            saveFailureStatus(doc.getId(), e.getMessage());
             throw e;
         }
+    }
+
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    void saveFailureStatus(java.util.UUID documentId, String errorMessage) {
+        Document doc = documentRepository.findById(documentId)
+            .orElseThrow(() -> new IllegalStateException("Document not found: " + documentId));
+        doc.setStatus(DocumentStatus.FAILED);
+        doc.setErrorMessage(errorMessage);
+        documentRepository.save(doc);
     }
 }
