@@ -1,5 +1,7 @@
 package com.majm.rag.knowledge;
 
+import com.majm.rag.knowledge.DocumentRepository;
+import com.majm.rag.knowledge.DocumentChunkRepository;
 import com.majm.rag.knowledge.domain.KnowledgeBase;
 import com.majm.rag.knowledge.domain.KnowledgeBaseStatus;
 import com.majm.rag.knowledge.dto.CreateKnowledgeBaseRequest;
@@ -24,6 +26,12 @@ class KnowledgeBaseServiceTest {
 
     @Mock
     private KnowledgeBaseRepository repository;
+
+    @Mock
+    private DocumentRepository documentRepository;
+
+    @Mock
+    private DocumentChunkRepository chunkRepository;
 
     @InjectMocks
     private KnowledgeBaseService service;

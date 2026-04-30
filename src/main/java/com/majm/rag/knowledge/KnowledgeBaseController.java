@@ -10,6 +10,7 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
+import java.net.URI;
 import java.util.UUID;
 
 @RestController
@@ -21,7 +22,9 @@ public class KnowledgeBaseController {
 
     @PostMapping
     public ResponseEntity<KnowledgeBaseResponse> create(@Valid @RequestBody CreateKnowledgeBaseRequest request) {
-        return ResponseEntity.ok(KnowledgeBaseResponse.from(service.create(request)));
+        KnowledgeBaseResponse response = KnowledgeBaseResponse.from(service.create(request));
+        URI location = URI.create("/api/v1/knowledge-bases/" + response.id());
+        return ResponseEntity.created(location).body(response);
     }
 
     @GetMapping
@@ -36,7 +39,7 @@ public class KnowledgeBaseController {
 
     @PutMapping("/{id}")
     public KnowledgeBaseResponse update(@PathVariable UUID id,
-                                        @RequestBody UpdateKnowledgeBaseRequest request) {
+                                        @Valid @RequestBody UpdateKnowledgeBaseRequest request) {
         return KnowledgeBaseResponse.from(service.update(id, request));
     }
 

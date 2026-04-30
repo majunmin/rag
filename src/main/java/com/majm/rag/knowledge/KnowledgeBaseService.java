@@ -16,6 +16,8 @@ import java.util.UUID;
 public class KnowledgeBaseService {
 
     private final KnowledgeBaseRepository repository;
+    private final DocumentRepository documentRepository;
+    private final DocumentChunkRepository chunkRepository;
 
     @Transactional
     public KnowledgeBase create(CreateKnowledgeBaseRequest request) {
@@ -28,10 +30,12 @@ public class KnowledgeBaseService {
         return repository.save(kb);
     }
 
+    @Transactional(readOnly = true)
     public Page<KnowledgeBase> listAll(Pageable pageable) {
         return repository.findAll(pageable);
     }
 
+    @Transactional(readOnly = true)
     public KnowledgeBase getById(UUID id) {
         return repository.findById(id)
             .orElseThrow(() -> new IllegalArgumentException("KnowledgeBase not found: " + id));
@@ -49,7 +53,10 @@ public class KnowledgeBaseService {
 
     @Transactional
     public void delete(UUID id) {
-        KnowledgeBase kb = getById(id);
-        repository.delete(kb);
+        getById(id);
+        chunkRepository.deleteByKnowledgeBaseId(id);
+        documentRepository.findByKnowledgeBaseId(id, Pageable.unpaged())
+            .forEach(doc -> documentRepository.delete(doc));
+        repository.deleteById(id);
     }
 }
