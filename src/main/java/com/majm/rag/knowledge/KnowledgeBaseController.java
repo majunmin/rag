@@ -2,6 +2,8 @@ package com.majm.rag.knowledge;
 
 import com.majm.rag.knowledge.dto.CreateKnowledgeBaseRequest;
 import com.majm.rag.knowledge.dto.KnowledgeBaseResponse;
+import com.majm.rag.knowledge.dto.SearchKnowledgeBaseRequest;
+import com.majm.rag.knowledge.dto.SearchResultItem;
 import com.majm.rag.knowledge.dto.UpdateKnowledgeBaseRequest;
 import com.majm.rag.retrieval.RetrievalService;
 import jakarta.validation.Valid;
@@ -54,13 +56,10 @@ public class KnowledgeBaseController {
 
     @PostMapping("/{id}/search")
     public List<SearchResultItem> search(@PathVariable UUID id,
-                                         @RequestBody SearchRequest request) {
+                                         @Valid @RequestBody SearchKnowledgeBaseRequest request) {
         return retrievalService.search(id, request.query(), request.topK())
             .stream()
             .map(doc -> new SearchResultItem(doc.getText(), doc.getMetadata()))
             .toList();
     }
-
-    record SearchRequest(String query, int topK) {}
-    record SearchResultItem(String content, java.util.Map<String, Object> metadata) {}
 }

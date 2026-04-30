@@ -14,15 +14,17 @@ import java.util.UUID;
 @RequiredArgsConstructor
 public class RetrievalService {
 
+    private static final String KNOWLEDGE_BASE_ID_FILTER = "knowledge_base_id";
+
     private final VectorStore vectorStore;
 
     public List<Document> search(UUID knowledgeBaseId, String query, int topK) {
-        FilterExpressionBuilder b = new FilterExpressionBuilder();
+        FilterExpressionBuilder filter = new FilterExpressionBuilder();
         return vectorStore.similaritySearch(
             SearchRequest.builder()
                 .query(query)
                 .topK(topK)
-                .filterExpression(b.eq("knowledge_base_id", knowledgeBaseId.toString()).build())
+                .filterExpression(filter.eq(KNOWLEDGE_BASE_ID_FILTER, knowledgeBaseId.toString()).build())
                 .build()
         );
     }

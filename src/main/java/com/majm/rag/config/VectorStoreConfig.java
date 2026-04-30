@@ -3,6 +3,7 @@ package com.majm.rag.config;
 import org.springframework.ai.embedding.EmbeddingModel;
 import org.springframework.ai.vectorstore.VectorStore;
 import org.springframework.ai.vectorstore.pgvector.PgVectorStore;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -13,12 +14,15 @@ import static org.springframework.ai.vectorstore.pgvector.PgVectorStore.PgIndexT
 @Configuration
 public class VectorStoreConfig {
 
+    @Value("${spring.ai.vectorstore.pgvector.dimensions:1536}")
+    private int dimensions;
+
     @Bean
     public VectorStore vectorStore(JdbcTemplate jdbcTemplate, EmbeddingModel embeddingModel) {
         return PgVectorStore.builder(jdbcTemplate, embeddingModel)
             .indexType(HNSW)
             .distanceType(COSINE_DISTANCE)
-            .dimensions(1536)
+            .dimensions(dimensions)
             .initializeSchema(false)
             .vectorTableName("document_chunk")
             .build();

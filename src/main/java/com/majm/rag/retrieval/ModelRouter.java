@@ -6,6 +6,12 @@ import org.springframework.stereotype.Component;
 
 import java.util.Map;
 
+/**
+ * Routes embedding model requests by name.
+ * Reserved for future multi-model routing when KnowledgeBase.embeddingModel field is used
+ * to select a model per knowledge base. Currently the single registered EmbeddingModel
+ * is used project-wide via VectorStoreConfig.
+ */
 @Component
 @RequiredArgsConstructor
 public class ModelRouter {
@@ -13,8 +19,12 @@ public class ModelRouter {
     private final Map<String, EmbeddingModel> embeddingModels;
 
     public EmbeddingModel getEmbeddingModel(String modelName) {
-        return embeddingModels.values().stream()
-            .findFirst()
-            .orElseThrow(() -> new IllegalArgumentException("No embedding model available for: " + modelName));
+        EmbeddingModel model = embeddingModels.get(modelName);
+        if (model == null) {
+            throw new IllegalArgumentException(
+                "No embedding model registered with name: " + modelName
+                + ". Available: " + embeddingModels.keySet());
+        }
+        return model;
     }
 }
