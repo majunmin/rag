@@ -15,7 +15,6 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import reactor.core.publisher.Flux;
 
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -36,6 +35,7 @@ public class ChatService {
     private final RetrievalService retrievalService;
     private final ConversationRepository conversationRepository;
     private final ChatClient chatClient;
+    private final ConversationPersistenceService persistenceService;
 
     public String buildContext(UUID knowledgeBaseId, String query, int topK) {
         List<Document> chunks = retrievalService.search(knowledgeBaseId, query, topK);
@@ -86,16 +86,6 @@ public class ChatService {
             .stream()
             .content()
             .doOnNext(assistantReply::append)
-            .doOnComplete(() -> appendAssistantMessage(conversationId, assistantReply.toString()));
-    }
-
-    @Transactional
-    private void appendAssistantMessage(UUID conversationId, String content) {
-        conversationRepository.findById(conversationId).ifPresent(conv -> {
-            List<Map<String, String>> messages = new ArrayList<>(conv.getMessages());
-            messages.add(Map.of("role", "assistant", "content", content));
-            conv.setMessages(messages);
-            conversationRepository.save(conv);
-        });
+            .doOnComplete(() -> persistenceService.appendAssistantMessage(conversationId, assistantReply.toString()));
     }
 }
