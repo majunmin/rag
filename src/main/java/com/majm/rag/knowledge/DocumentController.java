@@ -3,6 +3,8 @@ package com.majm.rag.knowledge;
 import com.majm.rag.ingestion.DocumentUploadService;
 import com.majm.rag.ingestion.dto.UploadDocumentResponse;
 import com.majm.rag.knowledge.domain.DocumentChunk;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -13,6 +15,7 @@ import org.springframework.web.multipart.MultipartFile;
 import java.util.List;
 import java.util.UUID;
 
+@Tag(name = "Document", description = "Upload, list, delete documents and inspect chunks within a knowledge base")
 @RestController
 @RequestMapping("/api/v1/knowledge-bases/{kbId}/documents")
 @RequiredArgsConstructor
@@ -22,12 +25,14 @@ public class DocumentController {
     private final DocumentRepository documentRepository;
     private final DocumentChunkRepository chunkRepository;
 
+    @Operation(summary = "Upload a document (async ingestion via Kafka). Returns 202 Accepted.")
     @PostMapping
     public ResponseEntity<UploadDocumentResponse> upload(@PathVariable UUID kbId,
                                                           @RequestParam("file") MultipartFile file) {
         return ResponseEntity.accepted().body(uploadService.upload(kbId, file));
     }
 
+    @Operation(summary = "List documents in a knowledge base (paginated)")
     @GetMapping
     public Page<DocumentListItem> list(@PathVariable UUID kbId, Pageable pageable) {
         return documentRepository.findByKnowledgeBaseId(kbId, pageable)
@@ -35,6 +40,7 @@ public class DocumentController {
                 d.getStatus().name(), d.getChunkCount(), d.getCreatedAt()));
     }
 
+    @Operation(summary = "Delete a document and its chunks")
     @DeleteMapping("/{docId}")
     public ResponseEntity<Void> delete(@PathVariable UUID kbId, @PathVariable UUID docId) {
         chunkRepository.deleteByDocumentId(docId);
@@ -42,6 +48,7 @@ public class DocumentController {
         return ResponseEntity.noContent().build();
     }
 
+    @Operation(summary = "Inspect chunks of a document (ordered by chunk index)")
     @GetMapping("/{docId}/chunks")
     public List<DocumentChunk> chunks(@PathVariable UUID kbId, @PathVariable UUID docId) {
         return chunkRepository.findByDocumentIdOrderByChunkIndex(docId);

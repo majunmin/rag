@@ -29,17 +29,18 @@ spring:
       pgvector:
         index-type: HNSW
         distance-type: COSINE_DISTANCE
-        dimensions: 1536
+        dimensions: 1024
         initialize-schema: false
         table-name: document_chunk
     openai:
-      api-key: ${OPENAI_API_KEY:dummy}
+      base-url: ${BAILIAN_BASE_URL:https://dashscope.aliyuncs.com/compatible-mode}
+      api-key: ${DASHSCOPE_API_KEY:${OPENAI_API_KEY:dummy}}
       chat:
         options:
-          model: gpt-4o-mini
+          model: ${BAILIAN_CHAT_MODEL:qwen-plus}
       embedding:
         options:
-          model: text-embedding-3-small
+          model: ${BAILIAN_EMBEDDING_MODEL:text-embedding-v3}
     ollama:
       base-url: ${OLLAMA_BASE_URL:http://localhost:11434}
       chat:
@@ -55,3 +56,13 @@ app:
 
 server:
   port: 8080
+
+springdoc:
+  api-docs:
+    path: /v3/api-docs
+  swagger-ui:
+    path: /swagger-ui.html
+    operations-sorter: method
+    tags-sorter: alpha
+    try-it-out-enabled: true
+  packages-to-scan: com.majm.rag

@@ -16,7 +16,7 @@ import static org.springframework.ai.vectorstore.pgvector.PgVectorStore.PgIndexT
 @Configuration
 public class VectorStoreConfig {
 
-    @Value("${spring.ai.vectorstore.pgvector.dimensions:1536}")
+    @Value("${spring.ai.vectorstore.pgvector.dimensions:1024}")
     private int dimensions;
 
     @Bean

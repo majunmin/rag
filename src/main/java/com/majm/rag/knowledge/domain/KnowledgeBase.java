@@ -24,7 +24,7 @@ public class KnowledgeBase {
     private String description;
 
     @Column(name = "embedding_model", nullable = false)
-    private String embeddingModel = "text-embedding-3-small";
+    private String embeddingModel = "text-embedding-v3";
 
     @Column(name = "chunk_size", nullable = false)
     private int chunkSize = 512;
