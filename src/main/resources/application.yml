@@ -30,7 +30,8 @@ spring:
         index-type: HNSW
         distance-type: COSINE_DISTANCE
         dimensions: 1536
-        initialize-schema: true
+        initialize-schema: false
+        table-name: document_chunk
     openai:
       api-key: ${OPENAI_API_KEY:dummy}
       chat:
@@ -47,7 +48,7 @@ spring:
 
 app:
   storage:
-    base-path: /data/uploads
+    base-path: ${user.home}/rag-uploads
   ingestion:
     topic: document.ingestion
     dlt-topic: document.ingestion.dlt
