@@ -8,12 +8,14 @@ import com.majm.rag.retrieval.RetrievalService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.chat.messages.AssistantMessage;
+import org.springframework.ai.chat.messages.Message;
 import org.springframework.ai.chat.messages.UserMessage;
 import org.springframework.ai.document.Document;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import reactor.core.publisher.Flux;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -58,7 +60,6 @@ public class ChatService {
         return conversationRepository.save(conv);
     }
 
-    @Transactional
     public Flux<String> continueConversation(UUID conversationId, ConversationMessageRequest request) {
         Conversation conv = conversationRepository.findById(conversationId)
             .orElseThrow(() -> new IllegalArgumentException("Conversation not found: " + conversationId));
@@ -70,14 +71,31 @@ public class ChatService {
         conv.setMessages(history);
         conversationRepository.save(conv);
 
+        StringBuilder assistantReply = new StringBuilder();
+
         return chatClient.prompt()
             .system(s -> s.text(RAG_SYSTEM_PROMPT).param("context", context))
             .messages(history.stream()
-                .map(m -> m.get("role").equals("user")
-                    ? new UserMessage(m.get("content"))
-                    : (org.springframework.ai.chat.messages.Message) new AssistantMessage(m.get("content")))
+                .map(m -> {
+                    String role = m.get("role");
+                    return (role != null && role.equals("user"))
+                        ? (Message) new UserMessage(m.get("content"))
+                        : (Message) new AssistantMessage(m.get("content"));
+                })
                 .collect(Collectors.toList()))
             .stream()
-            .content();
+            .content()
+            .doOnNext(assistantReply::append)
+            .doOnComplete(() -> appendAssistantMessage(conversationId, assistantReply.toString()));
+    }
+
+    @Transactional
+    private void appendAssistantMessage(UUID conversationId, String content) {
+        conversationRepository.findById(conversationId).ifPresent(conv -> {
+            List<Map<String, String>> messages = new ArrayList<>(conv.getMessages());
+            messages.add(Map.of("role", "assistant", "content", content));
+            conv.setMessages(messages);
+            conversationRepository.save(conv);
+        });
     }
 }
