@@ -7,7 +7,7 @@ spring:
     password: rag
   jpa:
     hibernate:
-      ddl-auto: validate
+      ddl-auto: none
     show-sql: false
   flyway:
     enabled: true
@@ -30,7 +30,7 @@ spring:
         index-type: HNSW
         distance-type: COSINE_DISTANCE
         dimensions: 1536
-        initialize-schema: false
+        initialize-schema: true
     openai:
       api-key: ${OPENAI_API_KEY:dummy}
       chat:
