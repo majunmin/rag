@@ -3,6 +3,7 @@ package com.majm.rag.knowledge;
 import com.majm.rag.knowledge.dto.CreateKnowledgeBaseRequest;
 import com.majm.rag.knowledge.dto.KnowledgeBaseResponse;
 import com.majm.rag.knowledge.dto.UpdateKnowledgeBaseRequest;
+import com.majm.rag.retrieval.RetrievalService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
@@ -11,6 +12,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 import java.net.URI;
+import java.util.List;
 import java.util.UUID;
 
 @RestController
@@ -19,6 +21,7 @@ import java.util.UUID;
 public class KnowledgeBaseController {
 
     private final KnowledgeBaseService service;
+    private final RetrievalService retrievalService;
 
     @PostMapping
     public ResponseEntity<KnowledgeBaseResponse> create(@Valid @RequestBody CreateKnowledgeBaseRequest request) {
@@ -48,4 +51,16 @@ public class KnowledgeBaseController {
         service.delete(id);
         return ResponseEntity.noContent().build();
     }
+
+    @PostMapping("/{id}/search")
+    public List<SearchResultItem> search(@PathVariable UUID id,
+                                         @RequestBody SearchRequest request) {
+        return retrievalService.search(id, request.query(), request.topK())
+            .stream()
+            .map(doc -> new SearchResultItem(doc.getText(), doc.getMetadata()))
+            .toList();
+    }
+
+    record SearchRequest(String query, int topK) {}
+    record SearchResultItem(String content, java.util.Map<String, Object> metadata) {}
 }
