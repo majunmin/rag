@@ -1,3 +1,6 @@
 package com.majm.rag.knowledge.domain;
 
-public enum KnowledgeBaseStatus { ACTIVE, ARCHIVED }
+public enum KnowledgeBaseStatus {
+    ACTIVE,
+    ARCHIVED
+}

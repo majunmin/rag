@@ -24,6 +24,11 @@ import java.util.stream.Collectors;
 @RequiredArgsConstructor
 public class ChatService {
 
+    static final String MSG_ROLE = "role";
+    static final String MSG_CONTENT = "content";
+    static final String ROLE_USER = "user";
+    static final String ROLE_ASSISTANT = "assistant";
+
     private static final String RAG_SYSTEM_PROMPT = """
         You are a helpful assistant. Answer questions based only on the provided context.
         If the context does not contain enough information, say so clearly.
@@ -37,7 +42,7 @@ public class ChatService {
     private final ChatClient chatClient;
     private final ConversationPersistenceService persistenceService;
 
-    public String buildContext(UUID knowledgeBaseId, String query, int topK) {
+    private String buildContext(UUID knowledgeBaseId, String query, int topK) {
         List<Document> chunks = retrievalService.search(knowledgeBaseId, query, topK);
         return chunks.stream()
             .map(Document::getText)
@@ -67,7 +72,7 @@ public class ChatService {
         String context = buildContext(conv.getKnowledgeBaseId(), request.question(), request.topK());
 
         List<Map<String, String>> history = conv.getMessages();
-        history.add(Map.of("role", "user", "content", request.question()));
+        history.add(Map.of(MSG_ROLE, ROLE_USER, MSG_CONTENT, request.question()));
         conv.setMessages(history);
         conversationRepository.save(conv);
 
@@ -77,12 +82,12 @@ public class ChatService {
             .system(s -> s.text(RAG_SYSTEM_PROMPT).param("context", context))
             .messages(history.stream()
                 .map(m -> {
-                    String role = m.get("role");
-                    return (role != null && role.equals("user"))
-                        ? (Message) new UserMessage(m.get("content"))
-                        : (Message) new AssistantMessage(m.get("content"));
+                    String role = m.get(MSG_ROLE);
+                    return ROLE_USER.equals(role)
+                        ? (Message) new UserMessage(m.get(MSG_CONTENT))
+                        : (Message) new AssistantMessage(m.get(MSG_CONTENT));
                 })
-                .collect(Collectors.toList()))
+                .toList())
             .stream()
             .content()
             .doOnNext(assistantReply::append)

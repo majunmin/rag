@@ -11,7 +11,8 @@ import java.util.UUID;
 
 @Entity
 @Table(name = "knowledge_base")
-@Getter @Setter
+@Getter
+@Setter
 public class KnowledgeBase {
 
     @Id

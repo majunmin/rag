@@ -34,7 +34,7 @@ spring:
         table-name: document_chunk
     openai:
       base-url: ${BAILIAN_BASE_URL:https://dashscope.aliyuncs.com/compatible-mode}
-      api-key: ${DASHSCOPE_API_KEY:${OPENAI_API_KEY:dummy}}
+      api-key: ${DASHSCOPE_API_KEY:${OPENAI_API_KEY:}}
       chat:
         options:
           model: ${BAILIAN_CHAT_MODEL:qwen-plus}

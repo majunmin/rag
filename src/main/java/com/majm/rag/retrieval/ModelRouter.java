@@ -7,8 +7,7 @@ import org.springframework.stereotype.Component;
 import java.util.Map;
 
 /**
- * Routes embedding model requests by name.
- * Reserved for future multi-model routing when KnowledgeBase.embeddingModel field is used
+ * Reserved for future multi-model routing when KnowledgeBase.embeddingModel is used
  * to select a model per knowledge base. Currently the single registered EmbeddingModel
  * is used project-wide via VectorStoreConfig.
  */

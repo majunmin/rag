@@ -44,19 +44,28 @@ public class KnowledgeBaseService {
     @Transactional
     public KnowledgeBase update(UUID id, UpdateKnowledgeBaseRequest request) {
         KnowledgeBase kb = getById(id);
-        if (request.name() != null) kb.setName(request.name());
-        if (request.description() != null) kb.setDescription(request.description());
-        if (request.chunkSize() != null) kb.setChunkSize(request.chunkSize());
-        if (request.chunkOverlap() != null) kb.setChunkOverlap(request.chunkOverlap());
-        return repository.save(kb);
+        if (request.name() != null) {
+            kb.setName(request.name());
+        }
+        if (request.description() != null) {
+            kb.setDescription(request.description());
+        }
+        if (request.chunkSize() != null) {
+            kb.setChunkSize(request.chunkSize());
+        }
+        if (request.chunkOverlap() != null) {
+            kb.setChunkOverlap(request.chunkOverlap());
+        }
+        return kb;
     }
 
     @Transactional
     public void delete(UUID id) {
-        getById(id);
+        if (!repository.existsById(id)) {
+            throw new IllegalArgumentException("KnowledgeBase not found: " + id);
+        }
         chunkRepository.deleteByKnowledgeBaseId(id);
-        documentRepository.findByKnowledgeBaseId(id, Pageable.unpaged())
-            .forEach(doc -> documentRepository.delete(doc));
+        documentRepository.deleteByKnowledgeBaseId(id);
         repository.deleteById(id);
     }
 }

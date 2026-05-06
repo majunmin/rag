@@ -13,7 +13,8 @@ import java.util.UUID;
 
 @Entity
 @Table(name = "document_chunk")
-@Getter @Setter
+@Getter
+@Setter
 public class DocumentChunk {
 
     @Id

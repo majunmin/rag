@@ -19,9 +19,8 @@ class ConversationPersistenceService {
     public void appendAssistantMessage(UUID conversationId, String content) {
         conversationRepository.findById(conversationId).ifPresent(conv -> {
             List<Map<String, String>> messages = new ArrayList<>(conv.getMessages());
-            messages.add(Map.of("role", "assistant", "content", content));
+            messages.add(Map.of(ChatService.MSG_ROLE, ChatService.ROLE_ASSISTANT, ChatService.MSG_CONTENT, content));
             conv.setMessages(messages);
-            conversationRepository.save(conv);
         });
     }
 }

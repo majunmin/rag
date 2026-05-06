@@ -1,4 +1,4 @@
-package com.majm.rag;
+package com.majm.rag.common;
 
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;

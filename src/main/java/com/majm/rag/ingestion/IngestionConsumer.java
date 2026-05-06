@@ -24,11 +24,8 @@ import java.util.Map;
 @Slf4j
 public class IngestionConsumer {
 
-    // Minimum tokens per chunk
     private static final int MIN_CHUNK_SIZE = 5;
-    // Maximum tokens per chunk
     private static final int MAX_CHUNK_SIZE = 10000;
-    // Keep token boundaries intact
     private static final boolean KEEP_SEPARATOR = true;
 
     private final DocumentRepository documentRepository;

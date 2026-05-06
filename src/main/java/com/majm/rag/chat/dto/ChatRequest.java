@@ -10,7 +10,11 @@ public record ChatRequest(
     @NotBlank String question,
     int topK
 ) {
+    public static final int DEFAULT_TOP_K = 5;
+
     public ChatRequest {
-        if (topK <= 0) topK = 5;
+        if (topK <= 0) {
+            topK = DEFAULT_TOP_K;
+        }
     }
 }
