@@ -28,7 +28,6 @@ public class VectorStoreConfig {
             .distanceType(COSINE_DISTANCE)
             .dimensions(dimensions)
             .initializeSchema(false)
-            .vectorTableName("document_chunk")
             .build();
     }
 }

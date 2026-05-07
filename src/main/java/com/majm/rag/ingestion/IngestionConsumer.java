@@ -54,11 +54,14 @@ public class IngestionConsumer {
                 MIN_CHUNK_SIZE, MAX_CHUNK_SIZE, KEEP_SEPARATOR);
             List<org.springframework.ai.document.Document> chunks = splitter.apply(rawDocs);
 
-            chunks.forEach(chunk -> chunk.getMetadata().putAll(Map.of(
-                "knowledge_base_id", kb.getId().toString(),
-                "document_id", doc.getId().toString(),
-                "document_name", doc.getName()
-            )));
+            for (int i = 0; i < chunks.size(); i++) {
+                chunks.get(i).getMetadata().putAll(Map.of(
+                    "knowledge_base_id", kb.getId().toString(),
+                    "document_id", doc.getId().toString(),
+                    "document_name", doc.getName(),
+                    "chunk_index", i
+                ));
+            }
 
             // NOTE: vectorStore.add() is not part of the JPA transaction.
             // If the transaction rolls back after this point, orphan vectors may remain.

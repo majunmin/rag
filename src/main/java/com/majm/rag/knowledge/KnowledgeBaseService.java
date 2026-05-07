@@ -17,7 +17,7 @@ public class KnowledgeBaseService {
 
     private final KnowledgeBaseRepository repository;
     private final DocumentRepository documentRepository;
-    private final DocumentChunkRepository chunkRepository;
+    private final ChunkQueryService chunkQueryService;
 
     @Transactional
     public KnowledgeBase create(CreateKnowledgeBaseRequest request) {
@@ -64,7 +64,7 @@ public class KnowledgeBaseService {
         if (!repository.existsById(id)) {
             throw new IllegalArgumentException("KnowledgeBase not found: " + id);
         }
-        chunkRepository.deleteByKnowledgeBaseId(id);
+        chunkQueryService.deleteByKnowledgeBase(id);
         documentRepository.deleteByKnowledgeBaseId(id);
         repository.deleteById(id);
     }

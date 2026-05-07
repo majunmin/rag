@@ -1,7 +1,5 @@
 package com.majm.rag.knowledge;
 
-import com.majm.rag.knowledge.DocumentRepository;
-import com.majm.rag.knowledge.DocumentChunkRepository;
 import com.majm.rag.knowledge.domain.KnowledgeBase;
 import com.majm.rag.knowledge.domain.KnowledgeBaseStatus;
 import com.majm.rag.knowledge.dto.CreateKnowledgeBaseRequest;
@@ -31,7 +29,7 @@ class KnowledgeBaseServiceTest {
     private DocumentRepository documentRepository;
 
     @Mock
-    private DocumentChunkRepository chunkRepository;
+    private ChunkQueryService chunkQueryService;
 
     @InjectMocks
     private KnowledgeBaseService service;
@@ -73,7 +71,6 @@ class KnowledgeBaseServiceTest {
     @Test
     void update_shouldModifyFieldsAndSave() {
         when(repository.findById(savedKb.getId())).thenReturn(Optional.of(savedKb));
-        when(repository.save(any())).thenReturn(savedKb);
         var request = new UpdateKnowledgeBaseRequest("Updated Name", null, 256, 32);
 
         KnowledgeBase result = service.update(savedKb.getId(), request);

@@ -2,13 +2,14 @@ package com.majm.rag.knowledge;
 
 import com.majm.rag.ingestion.DocumentUploadService;
 import com.majm.rag.ingestion.dto.UploadDocumentResponse;
-import com.majm.rag.knowledge.domain.DocumentChunk;
+import com.majm.rag.knowledge.dto.DocumentChunkResponse;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.http.ResponseEntity;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
@@ -23,7 +24,7 @@ public class DocumentController {
 
     private final DocumentUploadService uploadService;
     private final DocumentRepository documentRepository;
-    private final DocumentChunkRepository chunkRepository;
+    private final ChunkQueryService chunkQueryService;
 
     @Operation(summary = "Upload a document (async ingestion via Kafka). Returns 202 Accepted.")
     @PostMapping
@@ -42,16 +43,17 @@ public class DocumentController {
 
     @Operation(summary = "Delete a document and its chunks")
     @DeleteMapping("/{docId}")
+    @Transactional
     public ResponseEntity<Void> delete(@PathVariable UUID kbId, @PathVariable UUID docId) {
-        chunkRepository.deleteByDocumentId(docId);
+        chunkQueryService.deleteByDocument(docId);
         documentRepository.deleteById(docId);
         return ResponseEntity.noContent().build();
     }
 
     @Operation(summary = "Inspect chunks of a document (ordered by chunk index)")
     @GetMapping("/{docId}/chunks")
-    public List<DocumentChunk> chunks(@PathVariable UUID kbId, @PathVariable UUID docId) {
-        return chunkRepository.findByDocumentIdOrderByChunkIndex(docId);
+    public List<DocumentChunkResponse> chunks(@PathVariable UUID kbId, @PathVariable UUID docId) {
+        return chunkQueryService.listByDocument(docId);
     }
 
     record DocumentListItem(UUID id, String name, String fileType, String status,

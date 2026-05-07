@@ -42,7 +42,7 @@ public class ChatService {
     private final ChatClient chatClient;
     private final ConversationPersistenceService persistenceService;
 
-    private String buildContext(UUID knowledgeBaseId, String query, int topK) {
+    String buildContext(UUID knowledgeBaseId, String query, int topK) {
         List<Document> chunks = retrievalService.search(knowledgeBaseId, query, topK);
         return chunks.stream()
             .map(Document::getText)
