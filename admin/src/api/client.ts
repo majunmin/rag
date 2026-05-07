@@ -36,21 +36,33 @@ export async function streamRequest(
   }
   const reader = res.body.getReader()
   const decoder = new TextDecoder()
+  let buffer = ''
+
+  const emitLines = (lines: string[], controller: ReadableStreamDefaultController<string>) => {
+    for (const line of lines) {
+      const trimmed = line.trim()
+      if (trimmed.startsWith('data:')) {
+        const token = trimmed.slice(5).trim()
+        if (token && token !== '[DONE]') controller.enqueue(token)
+      }
+    }
+  }
+
   return new ReadableStream<string>({
     async pull(controller) {
       const { done, value } = await reader.read()
       if (done) {
+        if (buffer) {
+          emitLines([buffer], controller)
+          buffer = ''
+        }
         controller.close()
         return
       }
-      const text = decoder.decode(value, { stream: true })
-      for (const line of text.split('\n')) {
-        const trimmed = line.trim()
-        if (trimmed.startsWith('data:')) {
-          const token = trimmed.slice(5).trim()
-          if (token && token !== '[DONE]') controller.enqueue(token)
-        }
-      }
+      buffer += decoder.decode(value, { stream: true })
+      const lines = buffer.split('\n')
+      buffer = lines.pop() ?? ''
+      emitLines(lines, controller)
     },
     cancel() {
       reader.cancel()

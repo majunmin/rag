@@ -52,3 +52,60 @@ describe('streamRequest', () => {
     await expect(streamRequest('/chat', {})).rejects.toThrow('Bad Request')
   })
 })
+
+describe('streamRequest SSE parsing', () => {
+  function makeStreamResponse(chunks: string[]) {
+    let i = 0
+    const encoder = new TextEncoder()
+    return {
+      ok: true,
+      status: 200,
+      body: {
+        getReader() {
+          return {
+            async read() {
+              if (i >= chunks.length) return { done: true, value: undefined }
+              return { done: false, value: encoder.encode(chunks[i++]) }
+            },
+            cancel: () => {},
+          }
+        },
+      },
+    }
+  }
+
+  async function collect(stream: ReadableStream<string>): Promise<string[]> {
+    const reader = stream.getReader()
+    const out: string[] = []
+    while (true) {
+      const { done, value } = await reader.read()
+      if (done) break
+      out.push(value)
+    }
+    return out
+  }
+
+  it('parses tokens from a single chunk', async () => {
+    mockFetch.mockResolvedValueOnce(
+      makeStreamResponse(['data: hello\n\ndata: world\n\n']),
+    )
+    const stream = await streamRequest('/chat', {})
+    expect(await collect(stream)).toEqual(['hello', 'world'])
+  })
+
+  it('buffers tokens split across chunk boundaries', async () => {
+    mockFetch.mockResolvedValueOnce(
+      makeStreamResponse(['data: hel', 'lo\n\ndata: wor', 'ld\n\n']),
+    )
+    const stream = await streamRequest('/chat', {})
+    expect(await collect(stream)).toEqual(['hello', 'world'])
+  })
+
+  it('skips [DONE] sentinel', async () => {
+    mockFetch.mockResolvedValueOnce(
+      makeStreamResponse(['data: hi\n\ndata: [DONE]\n\n']),
+    )
+    const stream = await streamRequest('/chat', {})
+    expect(await collect(stream)).toEqual(['hi'])
+  })
+})
