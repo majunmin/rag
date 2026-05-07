@@ -19,11 +19,12 @@ public class RetrievalService {
     private final VectorStore vectorStore;
 
     public List<Document> search(UUID knowledgeBaseId, String query, int topK) {
+        int clampedTopK = Math.min(Math.max(topK, 1), RetrievalLimits.MAX_TOP_K);
         FilterExpressionBuilder filter = new FilterExpressionBuilder();
         return vectorStore.similaritySearch(
             SearchRequest.builder()
                 .query(query)
-                .topK(topK)
+                .topK(clampedTopK)
                 .filterExpression(filter.eq(KNOWLEDGE_BASE_ID_FILTER, knowledgeBaseId.toString()).build())
                 .build()
         );
