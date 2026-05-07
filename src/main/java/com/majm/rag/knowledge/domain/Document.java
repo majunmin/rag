@@ -16,8 +16,14 @@ import java.util.UUID;
 public class Document {
 
     @Id
-    @GeneratedValue(strategy = GenerationType.UUID)
     private UUID id;
+
+    @PrePersist
+    void assignIdIfMissing() {
+        if (id == null) {
+            id = UUID.randomUUID();
+        }
+    }
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "knowledge_base_id", nullable = false)
