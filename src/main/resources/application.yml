@@ -6,9 +6,9 @@ spring:
       max-file-size: 25MB
       max-request-size: 30MB
   datasource:
-    url: jdbc:postgresql://localhost:5432/rag
-    username: rag
-    password: rag
+    url: ${DB_URL:jdbc:postgresql://localhost:5432/rag}
+    username: ${DB_USERNAME:rag}
+    password: ${DB_PASSWORD:rag}
   jpa:
     hibernate:
       ddl-auto: none
@@ -37,7 +37,7 @@ spring:
         initialize-schema: false
     openai:
       base-url: ${BAILIAN_BASE_URL:https://dashscope.aliyuncs.com/compatible-mode}
-      api-key: ${DASHSCOPE_API_KEY:${OPENAI_API_KEY:dummy}}
+      api-key: ${DASHSCOPE_API_KEY:${OPENAI_API_KEY:}}
       chat:
         options:
           model: ${BAILIAN_CHAT_MODEL:qwen-plus}
