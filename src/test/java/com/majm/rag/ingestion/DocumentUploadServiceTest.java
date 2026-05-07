@@ -11,12 +11,13 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
-import org.springframework.kafka.core.KafkaTemplate;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.mock.web.MockMultipartFile;
 
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.*;
 
@@ -26,13 +27,13 @@ class DocumentUploadServiceTest {
     @Mock private KnowledgeBaseService kbService;
     @Mock private DocumentRepository documentRepository;
     @Mock private StorageService storageService;
-    @Mock private KafkaTemplate<String, Object> kafkaTemplate;
+    @Mock private ApplicationEventPublisher eventPublisher;
 
     @InjectMocks
     private DocumentUploadService uploadService;
 
     @Test
-    void upload_shouldCreateDocumentAndPublishToKafka() throws Exception {
+    void upload_shouldCreateDocumentAndPublishEvent() {
         UUID kbId = UUID.randomUUID();
         KnowledgeBase kb = new KnowledgeBase();
         kb.setId(kbId);
@@ -52,6 +53,27 @@ class DocumentUploadServiceTest {
         UploadDocumentResponse response = uploadService.upload(kbId, file);
 
         assertThat(response.status()).isEqualTo("PENDING");
-        verify(kafkaTemplate).send(any(), any(), any());
+        verify(eventPublisher).publishEvent(any(IngestionRequestedEvent.class));
+    }
+
+    @Test
+    void upload_shouldRejectEmptyFile() {
+        UUID kbId = UUID.randomUUID();
+        MockMultipartFile empty = new MockMultipartFile("file", "test.pdf",
+            "application/pdf", new byte[0]);
+
+        assertThatThrownBy(() -> uploadService.upload(kbId, empty))
+            .isInstanceOf(IllegalArgumentException.class);
+    }
+
+    @Test
+    void upload_shouldRejectUnsupportedExtension() {
+        UUID kbId = UUID.randomUUID();
+        MockMultipartFile bad = new MockMultipartFile("file", "evil.exe",
+            "application/octet-stream", "data".getBytes());
+
+        assertThatThrownBy(() -> uploadService.upload(kbId, bad))
+            .isInstanceOf(IllegalArgumentException.class)
+            .hasMessageContaining("Unsupported");
     }
 }
