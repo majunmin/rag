@@ -1,17 +1,21 @@
 package com.majm.rag.knowledge;
 
 import com.majm.rag.common.exception.ResourceNotFoundException;
+import com.majm.rag.ingestion.StorageService;
 import com.majm.rag.knowledge.domain.KnowledgeBase;
 import com.majm.rag.knowledge.dto.CreateKnowledgeBaseRequest;
 import com.majm.rag.knowledge.dto.UpdateKnowledgeBaseRequest;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.List;
 import java.util.UUID;
 
+@Slf4j
 @Service
 @RequiredArgsConstructor
 public class KnowledgeBaseService {
@@ -19,6 +23,7 @@ public class KnowledgeBaseService {
     private final KnowledgeBaseRepository repository;
     private final DocumentRepository documentRepository;
     private final ChunkQueryService chunkQueryService;
+    private final StorageService storageService;
 
     @Transactional
     public KnowledgeBase create(CreateKnowledgeBaseRequest request) {
@@ -65,8 +70,11 @@ public class KnowledgeBaseService {
         if (!repository.existsById(id)) {
             throw ResourceNotFoundException.of("KnowledgeBase", id);
         }
+        List<String> filePaths = documentRepository.findFilePathsByKnowledgeBaseId(id);
         chunkQueryService.deleteByKnowledgeBase(id);
-        documentRepository.deleteByKnowledgeBaseId(id);
         repository.deleteById(id);
+        for (String path : filePaths) {
+            storageService.delete(path);
+        }
     }
 }

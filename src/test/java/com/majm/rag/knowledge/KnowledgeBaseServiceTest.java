@@ -1,6 +1,7 @@
 package com.majm.rag.knowledge;
 
 import com.majm.rag.common.exception.ResourceNotFoundException;
+import com.majm.rag.ingestion.StorageService;
 import com.majm.rag.knowledge.domain.KnowledgeBase;
 import com.majm.rag.knowledge.domain.KnowledgeBaseStatus;
 import com.majm.rag.knowledge.dto.CreateKnowledgeBaseRequest;
@@ -31,6 +32,9 @@ class KnowledgeBaseServiceTest {
 
     @Mock
     private ChunkQueryService chunkQueryService;
+
+    @Mock
+    private StorageService storageService;
 
     @InjectMocks
     private KnowledgeBaseService service;
