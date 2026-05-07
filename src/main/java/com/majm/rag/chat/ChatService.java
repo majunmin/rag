@@ -12,10 +12,12 @@ import org.springframework.ai.chat.messages.AssistantMessage;
 import org.springframework.ai.chat.messages.Message;
 import org.springframework.ai.chat.messages.UserMessage;
 import org.springframework.ai.document.Document;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import reactor.core.publisher.Flux;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -42,6 +44,20 @@ public class ChatService {
     private final ConversationRepository conversationRepository;
     private final ChatClient chatClient;
     private final ConversationPersistenceService persistenceService;
+
+    @Value("${app.chat.max-history-messages:20}")
+    private int maxHistoryMessages;
+
+    /**
+     * Returns a list with at most {@code maxSize} most recent messages. If the
+     * input is already within the cap, the same reference is returned.
+     */
+    static List<Map<String, String>> trimHistory(List<Map<String, String>> messages, int maxSize) {
+        if (maxSize <= 0 || messages.size() <= maxSize) {
+            return messages;
+        }
+        return new ArrayList<>(messages.subList(messages.size() - maxSize, messages.size()));
+    }
 
     String buildContext(UUID knowledgeBaseId, String query, int topK) {
         List<Document> chunks = retrievalService.search(knowledgeBaseId, query, topK);
@@ -72,8 +88,9 @@ public class ChatService {
 
         String context = buildContext(conv.getKnowledgeBaseId(), request.question(), request.topK());
 
-        List<Map<String, String>> history = conv.getMessages();
+        List<Map<String, String>> history = new ArrayList<>(conv.getMessages());
         history.add(Map.of(MSG_ROLE, ROLE_USER, MSG_CONTENT, request.question()));
+        history = trimHistory(history, maxHistoryMessages);
         conv.setMessages(history);
         conversationRepository.save(conv);
 

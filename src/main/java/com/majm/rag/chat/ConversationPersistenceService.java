@@ -1,6 +1,7 @@
 package com.majm.rag.chat;
 
 import lombok.RequiredArgsConstructor;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -15,12 +16,15 @@ class ConversationPersistenceService {
 
     private final ConversationRepository conversationRepository;
 
+    @Value("${app.chat.max-history-messages:20}")
+    private int maxHistoryMessages;
+
     @Transactional
     public void appendAssistantMessage(UUID conversationId, String content) {
         conversationRepository.findById(conversationId).ifPresent(conv -> {
             List<Map<String, String>> messages = new ArrayList<>(conv.getMessages());
             messages.add(Map.of(ChatService.MSG_ROLE, ChatService.ROLE_ASSISTANT, ChatService.MSG_CONTENT, content));
-            conv.setMessages(messages);
+            conv.setMessages(ChatService.trimHistory(messages, maxHistoryMessages));
         });
     }
 }

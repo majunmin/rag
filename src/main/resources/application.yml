@@ -60,6 +60,11 @@ app:
     api-key-auth:
       enabled: ${API_KEY_AUTH_ENABLED:false}
       expected-key: ${API_KEY:}
+  chat:
+    # Sliding-window cap on conversation history. The N most recent messages
+    # are kept in JSONB and replayed to the LLM on each turn. Avoids O(n^2)
+    # token cost and unbounded JSONB growth on long conversations.
+    max-history-messages: ${CHAT_MAX_HISTORY_MESSAGES:20}
 
 server:
   port: 8080

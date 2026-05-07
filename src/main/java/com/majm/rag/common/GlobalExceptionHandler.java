@@ -7,6 +7,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.orm.ObjectOptimisticLockingFailureException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
@@ -61,6 +62,15 @@ public class GlobalExceptionHandler {
         log.warn("[{}] Data integrity violation: {}", traceId, ex.getMostSpecificCause().getMessage());
         return ResponseEntity.status(HttpStatus.CONFLICT)
             .body(ErrorResponse.of("CONFLICT", "Operation violates a data constraint", traceId));
+    }
+
+    @ExceptionHandler(ObjectOptimisticLockingFailureException.class)
+    public ResponseEntity<ErrorResponse> handleOptimisticLock(ObjectOptimisticLockingFailureException ex) {
+        String traceId = newTraceId();
+        log.warn("[{}] Optimistic lock conflict on {}", traceId, ex.getPersistentClassName());
+        return ResponseEntity.status(HttpStatus.CONFLICT)
+            .body(ErrorResponse.of("CONCURRENT_UPDATE",
+                "Resource was modified by another request, please retry", traceId));
     }
 
     @ExceptionHandler(Exception.class)

@@ -31,6 +31,10 @@ public class Conversation {
     @Column(columnDefinition = "jsonb", nullable = false)
     private List<Map<String, String>> messages = new ArrayList<>();
 
+    @Version
+    @Column(nullable = false)
+    private Long version;
+
     @CreationTimestamp
     @Column(name = "created_at", updatable = false)
     private LocalDateTime createdAt;
