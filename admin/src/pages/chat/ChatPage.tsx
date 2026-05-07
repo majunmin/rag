@@ -47,7 +47,7 @@ export default function ChatPage() {
     const q = input.trim()
     if (!q || !selectedKbId || streaming) return
     setInput('')
-    await sendMessage({
+    const aiMsgId = await sendMessage({
       question: q,
       topK,
       mode,
@@ -57,8 +57,7 @@ export default function ChatPage() {
     })
     try {
       const chunks = await searchKb(selectedKbId, q, topK)
-      const lastAiMsg = [...messages].reverse().find(m => m.role === 'assistant')
-      if (lastAiMsg) attachChunks(lastAiMsg.id, chunks)
+      attachChunks(aiMsgId, chunks)
     } catch {
       // best-effort
     }

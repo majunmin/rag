@@ -22,7 +22,7 @@ export function useStreamingChat() {
   const [messages, setMessages] = useState<ChatMessage[]>([])
   const [streaming, setStreaming] = useState(false)
 
-  const sendMessage = useCallback(async (opts: SendOptions) => {
+  const sendMessage = useCallback(async (opts: SendOptions): Promise<string> => {
     const { question, topK, mode, knowledgeBaseId, conversationId, onConversationCreated } = opts
 
     const userMsg: ChatMessage = {
@@ -78,6 +78,8 @@ export function useStreamingChat() {
     } finally {
       setStreaming(false)
     }
+
+    return aiMsgId
   }, [])
 
   const attachChunks = useCallback((aiMsgId: string, chunks: SearchResultItem[]) => {
