@@ -1,5 +1,6 @@
 package com.majm.rag.knowledge;
 
+import com.majm.rag.common.exception.ResourceNotFoundException;
 import com.majm.rag.knowledge.domain.KnowledgeBase;
 import com.majm.rag.knowledge.domain.KnowledgeBaseStatus;
 import com.majm.rag.knowledge.dto.CreateKnowledgeBaseRequest;
@@ -64,7 +65,7 @@ class KnowledgeBaseServiceTest {
         when(repository.findById(id)).thenReturn(Optional.empty());
 
         assertThatThrownBy(() -> service.getById(id))
-            .isInstanceOf(IllegalArgumentException.class)
+            .isInstanceOf(ResourceNotFoundException.class)
             .hasMessageContaining(id.toString());
     }
 

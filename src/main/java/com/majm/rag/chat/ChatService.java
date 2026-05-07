@@ -2,6 +2,7 @@ package com.majm.rag.chat;
 
 import com.majm.rag.chat.domain.Conversation;
 import com.majm.rag.chat.dto.ChatRequest;
+import com.majm.rag.common.exception.ResourceNotFoundException;
 import com.majm.rag.chat.dto.ConversationMessageRequest;
 import com.majm.rag.chat.dto.CreateConversationRequest;
 import com.majm.rag.retrieval.RetrievalService;
@@ -67,7 +68,7 @@ public class ChatService {
 
     public Flux<String> continueConversation(UUID conversationId, ConversationMessageRequest request) {
         Conversation conv = conversationRepository.findById(conversationId)
-            .orElseThrow(() -> new IllegalArgumentException("Conversation not found: " + conversationId));
+            .orElseThrow(() -> ResourceNotFoundException.of("Conversation", conversationId));
 
         String context = buildContext(conv.getKnowledgeBaseId(), request.question(), request.topK());
 

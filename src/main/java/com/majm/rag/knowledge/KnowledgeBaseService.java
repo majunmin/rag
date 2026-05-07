@@ -1,5 +1,6 @@
 package com.majm.rag.knowledge;
 
+import com.majm.rag.common.exception.ResourceNotFoundException;
 import com.majm.rag.knowledge.domain.KnowledgeBase;
 import com.majm.rag.knowledge.dto.CreateKnowledgeBaseRequest;
 import com.majm.rag.knowledge.dto.UpdateKnowledgeBaseRequest;
@@ -38,7 +39,7 @@ public class KnowledgeBaseService {
     @Transactional(readOnly = true)
     public KnowledgeBase getById(UUID id) {
         return repository.findById(id)
-            .orElseThrow(() -> new IllegalArgumentException("KnowledgeBase not found: " + id));
+            .orElseThrow(() -> ResourceNotFoundException.of("KnowledgeBase", id));
     }
 
     @Transactional
@@ -62,7 +63,7 @@ public class KnowledgeBaseService {
     @Transactional
     public void delete(UUID id) {
         if (!repository.existsById(id)) {
-            throw new IllegalArgumentException("KnowledgeBase not found: " + id);
+            throw ResourceNotFoundException.of("KnowledgeBase", id);
         }
         chunkQueryService.deleteByKnowledgeBase(id);
         documentRepository.deleteByKnowledgeBaseId(id);
