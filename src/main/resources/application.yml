@@ -56,6 +56,10 @@ app:
   ingestion:
     topic: document.ingestion
     dlt-topic: document.ingestion.dlt
+  security:
+    api-key-auth:
+      enabled: ${API_KEY_AUTH_ENABLED:false}
+      expected-key: ${API_KEY:}
 
 server:
   port: 8080
