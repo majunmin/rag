@@ -13,11 +13,14 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
 
+import java.util.Set;
 import java.util.UUID;
 
 @Service
 @RequiredArgsConstructor
 public class DocumentUploadService {
+
+    private static final Set<String> ALLOWED_EXTENSIONS = Set.of("pdf", "docx", "doc", "md", "txt");
 
     private final KnowledgeBaseService kbService;
     private final DocumentRepository documentRepository;
@@ -29,16 +32,18 @@ public class DocumentUploadService {
 
     @Transactional
     public UploadDocumentResponse upload(UUID knowledgeBaseId, MultipartFile file) {
+        validate(file);
         KnowledgeBase kb = kbService.getById(knowledgeBaseId);
 
         UUID docId = UUID.randomUUID();
+        String displayName = file.getOriginalFilename();
         String path = storageService.store(file, knowledgeBaseId, docId);
 
         Document doc = new Document();
         doc.setId(docId);
         doc.setKnowledgeBase(kb);
-        doc.setName(file.getOriginalFilename());
-        doc.setFileType(detectFileType(file.getOriginalFilename()));
+        doc.setName(displayName);
+        doc.setFileType(detectFileType(displayName));
         doc.setFilePath(path);
         Document savedDoc = documentRepository.save(doc);
 
@@ -49,23 +54,41 @@ public class DocumentUploadService {
             savedDoc.getStatus().name());
     }
 
+    private void validate(MultipartFile file) {
+        if (file == null || file.isEmpty()) {
+            throw new IllegalArgumentException("Uploaded file is empty");
+        }
+        String name = file.getOriginalFilename();
+        if (name == null || name.isBlank()) {
+            throw new IllegalArgumentException("Uploaded file has no name");
+        }
+        String ext = extensionOf(name);
+        if (ext == null || !ALLOWED_EXTENSIONS.contains(ext)) {
+            throw new IllegalArgumentException("Unsupported file type. Allowed: " + ALLOWED_EXTENSIONS);
+        }
+    }
+
     private String detectFileType(String filename) {
-        if (filename == null) {
+        String ext = extensionOf(filename);
+        if (ext == null) {
             return "TXT";
         }
-        String lower = filename.toLowerCase();
-        if (lower.endsWith(".pdf")) {
-            return "PDF";
+        return switch (ext) {
+            case "pdf" -> "PDF";
+            case "docx", "doc" -> "DOCX";
+            case "md" -> "MD";
+            default -> "TXT";
+        };
+    }
+
+    private String extensionOf(String filename) {
+        if (filename == null) {
+            return null;
         }
-        if (lower.endsWith(".docx") || lower.endsWith(".doc")) {
-            return "DOCX";
+        int dot = filename.lastIndexOf('.');
+        if (dot < 0 || dot == filename.length() - 1) {
+            return null;
         }
-        if (lower.endsWith(".md")) {
-            return "MD";
-        }
-        if (lower.startsWith("http://") || lower.startsWith("https://")) {
-            return "URL";
-        }
-        return "TXT";
+        return filename.substring(dot + 1).toLowerCase();
     }
 }

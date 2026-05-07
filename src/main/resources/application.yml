@@ -1,6 +1,10 @@
 spring:
   application:
     name: rag
+  servlet:
+    multipart:
+      max-file-size: 25MB
+      max-request-size: 30MB
   datasource:
     url: jdbc:postgresql://localhost:5432/rag
     username: rag
@@ -31,10 +35,9 @@ spring:
         distance-type: COSINE_DISTANCE
         dimensions: 1024
         initialize-schema: false
-        table-name: document_chunk
     openai:
       base-url: ${BAILIAN_BASE_URL:https://dashscope.aliyuncs.com/compatible-mode}
-      api-key: ${DASHSCOPE_API_KEY:${OPENAI_API_KEY:}}
+      api-key: ${DASHSCOPE_API_KEY:${OPENAI_API_KEY:dummy}}
       chat:
         options:
           model: ${BAILIAN_CHAT_MODEL:qwen-plus}
