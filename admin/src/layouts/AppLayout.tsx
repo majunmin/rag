@@ -11,9 +11,9 @@ import {
 const { Sider, Header, Content } = Layout
 
 const NAV_ITEMS = [
-  { key: '/knowledge-bases', icon: <DatabaseOutlined />, label: '知识库管理' },
-  { key: '/knowledge-bases', icon: <FileTextOutlined />, label: '文档管理' },
-  { key: '/chat', icon: <MessageOutlined />, label: 'Chat 测试台' },
+  { key: 'kb', path: '/knowledge-bases', icon: <DatabaseOutlined />, label: '知识库管理' },
+  { key: 'docs', path: '/knowledge-bases', icon: <FileTextOutlined />, label: '文档管理' },
+  { key: 'chat', path: '/chat', icon: <MessageOutlined />, label: 'Chat 测试台' },
 ]
 
 function useBreadcrumb(pathname: string): string[] {
@@ -25,8 +25,9 @@ function useBreadcrumb(pathname: string): string[] {
 }
 
 function activeKey(pathname: string): string {
-  if (pathname.startsWith('/chat')) return '/chat'
-  return '/knowledge-bases'
+  if (pathname.startsWith('/chat')) return 'chat'
+  if (pathname.includes('/documents')) return 'docs'
+  return 'kb'
 }
 
 export default function AppLayout() {
@@ -84,7 +85,10 @@ export default function AppLayout() {
             icon: item.icon,
             label: item.label,
           }))}
-          onClick={({ key }) => navigate(key)}
+          onClick={({ key }) => {
+            const item = NAV_ITEMS.find(i => i.key === key)
+            if (item) navigate(item.path)
+          }}
         />
 
         <div

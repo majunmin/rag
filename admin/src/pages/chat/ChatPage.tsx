@@ -6,9 +6,8 @@ import {
 import {
   SendOutlined, ClearOutlined, PaperClipOutlined, RobotOutlined,
 } from '@ant-design/icons'
-import { useQuery } from '@tanstack/react-query'
-import { listKbs } from '../../api/knowledge-base'
 import { searchKb } from '../../api/document'
+import { useKbList } from '../../hooks/useKbList'
 import { useStreamingChat } from '../../hooks/useStreamingChat'
 import ChunkContextDrawer from './ChunkContextDrawer'
 import type { ChatMessage, SearchResultItem } from '../../types/api'
@@ -17,10 +16,7 @@ const { Text } = Typography
 const { TextArea } = Input
 
 export default function ChatPage() {
-  const { data: kbData } = useQuery({
-    queryKey: ['kb-list'],
-    queryFn: () => listKbs(0, 50),
-  })
+  const { data: kbData } = useKbList()
   const kbs = kbData?.content ?? []
 
   const [selectedKbId, setSelectedKbId] = useState<string>('')
