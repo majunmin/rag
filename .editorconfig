@@ -1,0 +1,35 @@
+# https://editorconfig.org/
+# Project-wide editor defaults. IDEs (IntelliJ, VS Code, Eclipse) honor this
+# automatically; falls back to .editorconfig-checker in CI.
+
+root = true
+
+[*]
+charset = utf-8
+end_of_line = lf
+insert_final_newline = true
+trim_trailing_whitespace = true
+indent_style = space
+indent_size = 4
+
+[*.{yml,yaml}]
+indent_size = 2
+
+[*.{json,md}]
+indent_size = 2
+
+[*.xml]
+indent_size = 4
+
+[Makefile]
+indent_style = tab
+
+[*.{sh,bat,cmd}]
+end_of_line = lf
+indent_size = 2
+
+[mvnw]
+end_of_line = lf
+
+[mvnw.cmd]
+end_of_line = crlf
