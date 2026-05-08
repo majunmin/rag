@@ -99,6 +99,13 @@
             <optional>true</optional>
         </dependency>
 
+        <!-- Structured (JSON) logging in prod via logback-spring.xml -->
+        <dependency>
+            <groupId>net.logstash.logback</groupId>
+            <artifactId>logstash-logback-encoder</artifactId>
+            <version>8.0</version>
+        </dependency>
+
         <!-- OpenAPI 3.0 / Swagger UI -->
         <dependency>
             <groupId>org.springdoc</groupId>
