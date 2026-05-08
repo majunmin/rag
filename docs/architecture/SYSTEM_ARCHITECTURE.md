@@ -1,0 +1,520 @@
+# 系统架构方案
+
+**项目**: RAG 知识库系统（rag0429 后端 + rag-admin 前端）
+**版本**: 0.0.1-SNAPSHOT，预上线状态
+**最后更新**: 2026-05-08
+
+---
+
+## 1. 系统定位
+
+为内部团队提供基于检索增强生成（RAG, Retrieval-Augmented Generation）的知识库问答能力。用户上传文档（PDF / DOCX / TXT / MD），系统切分为 chunk，调用 embedding 模型向量化后存入 pgvector；提问时以语义相似度召回相关 chunk，连同问题一起送入 LLM 生成答案，支持多轮对话。
+
+**典型场景**：内部产品手册问答、API 文档检索、运维 runbook 助手。
+
+**非目标**：对外服务、多租户隔离、用户管理与计费。
+
+---
+
+## 2. 总体架构
+
+### 2.1 拓扑
+
+```
+┌────────────────────────────────────────────────────────────────────┐
+│                          浏览器 (内网)                              │
+│  ┌───────────────────────────────────────────────────────────────┐ │
+│  │  rag-admin  (React 19 + Vite + AntD 6 + TanStack Query)        │ │
+│  │  /knowledge-bases   /chat   /...documents   /search            │ │
+│  └───────────────────────────────────────────────────────────────┘ │
+└──────────────┬─────────────────────────────────────────────────────┘
+               │ HTTPS（生产经 Nginx 反代；dev 经 Vite proxy）
+               │ Header: X-API-Key（可选开启）
+               ▼
+┌────────────────────────────────────────────────────────────────────┐
+│                  rag0429 后端 (Spring Boot 3.3.5)                  │
+│                                                                    │
+│   /api/v1/knowledge-bases          KnowledgeBaseController         │
+│   /api/v1/.../documents            DocumentController              │
+│   /api/v1/chat   /chat/conversations   ChatController (SSE)        │
+│   /api/actuator/health             Spring Boot Actuator            │
+│                                                                    │
+│   ┌─────────────┐  ┌──────────────┐  ┌─────────────────┐           │
+│   │   Web 层    │→ │   Service 层 │→ │   Persistence    │           │
+│   │ (Controller)│  │ (KbService、 │  │   (Spring Data   │           │
+│   │             │  │  DocService、│  │    JPA + JDBC)   │           │
+│   │             │  │  ChatService)│  │                  │           │
+│   └─────────────┘  └──────┬───────┘  └────────┬────────┘           │
+│                           │                   │                    │
+│                           ▼                   │                    │
+│                    ┌──────────────┐           │                    │
+│                    │ Spring AI    │           │                    │
+│                    │ ChatClient + │           │                    │
+│                    │ VectorStore  │           │                    │
+│                    └──┬─────┬─────┘           │                    │
+│                       │     │                 │                    │
+│   ┌───────────────────┼─────┼─────────────────┼─────┐              │
+│   │   Async ingestion │     │ embedding API   │     │              │
+│   │   (Kafka)         │     │                 │     │              │
+│   │ ┌──────────────┐  │     │                 │     │              │
+│   │ │IngestionEvent│  │     │                 │     │              │
+│   │ │   Listener    │ │     │                 │     │              │
+│   │ │ (AFTER_COMMIT)│ │     │                 │     │              │
+│   │ └──────┬───────┘  │     │                 │     │              │
+│   │        ▼          │     │                 │     │              │
+│   │   Kafka topic     │     │                 │     │              │
+│   │ document.ingestion│     │                 │     │              │
+│   │        │          │     │                 │     │              │
+│   │        ▼          │     │                 │     │              │
+│   │ ┌──────────────┐  │     │                 │     │              │
+│   │ │  Ingestion   │  │     │                 │     │              │
+│   │ │  Consumer    │──┘     │                 │     │              │
+│   │ │ + Status     │        │                 │     │              │
+│   │ │   Service    │        │                 │     │              │
+│   │ │ + Parser     │        │                 │     │              │
+│   │ │   Factory    │        │                 │     │              │
+│   │ └──────┬───────┘        │                 │     │              │
+│   │        │ on failure     │                 │     │              │
+│   │        ▼                │                 │     │              │
+│   │   Kafka DLT             │                 │     │              │
+│   │ document.ingestion.dlt  │                 │     │              │
+│   └───────────────────┬─────┴─────────────────┘     │              │
+└───────────────────────┼───────────────────────────────────┬────────┘
+                        │                                   │
+                        ▼                                   ▼
+            ┌─────────────────────────┐         ┌──────────────────────┐
+            │   PostgreSQL 18 +       │         │   阿里云百炼 DashScope │
+            │   pgvector              │         │   (OpenAI 兼容 API)   │
+            │                         │         │                      │
+            │  knowledge_base         │         │   /embeddings         │
+            │  document               │         │   /chat/completions   │
+            │  conversation           │         │                      │
+            │  vector_store (HNSW)    │         │   max batch = 10     │
+            └─────────────────────────┘         └──────────────────────┘
+                        │
+                        ▼
+            ┌─────────────────────────┐
+            │   本地磁盘存储            │
+            │   ~/rag-uploads/         │
+            │     <kbId>/              │
+            │       <docId>.<ext>      │
+            └─────────────────────────┘
+```
+
+### 2.2 进程与端口
+
+| 进程 | 端口 | 部署方式 |
+|---|---|---|
+| rag0429 (Spring Boot) | 8080 | jar 直跑 / Docker |
+| rag-admin (Nginx 静态) | 生产 80/443，dev 5173 | 静态资源 + Nginx 反代 |
+| PostgreSQL 18 + pgvector | 5432 | docker-compose |
+| Kafka 3.8（KRaft，单节点） | 9092 | docker-compose |
+
+### 2.3 仓库划分
+
+两个独立 git 仓库（前后端独立维护）：
+
+- `rag0429/` —— 后端 Spring Boot 服务
+- `rag-admin/` —— 前端 React 单页应用
+
+前端通过 `/api/*` 路径调用后端，开发期 Vite proxy 转发到 `localhost:8080`，生产期由 Nginx 反代。
+
+---
+
+## 3. 技术栈
+
+### 3.1 后端（rag0429）
+
+| 类别 | 技术 | 版本 |
+|---|---|---|
+| 语言 | Java | 21 |
+| 框架 | Spring Boot | 3.3.5 |
+| AI 框架 | Spring AI | 1.0.0 |
+| Web | Spring MVC（同步）+ Reactor Flux（SSE 流式） | 6.1.x / 3.6.x |
+| 数据访问 | Spring Data JPA / Hibernate 6 + JdbcTemplate | 6.5.3 |
+| 数据库迁移 | Flyway | 10.10.0 |
+| 消息中间件 | Apache Kafka + Spring Kafka | 3.7 / 3.2.4 |
+| 文档解析 | Apache Tika | 3.1.0 |
+| 文本切分 | Spring AI TokenTextSplitter | — |
+| 可观测性 | Spring Boot Actuator + Micrometer | — |
+| 构建 | Maven | — |
+
+### 3.2 前端（rag-admin）
+
+| 类别 | 技术 |
+|---|---|
+| 框架 | React 19 + Vite 8 + TypeScript 6 |
+| UI | Ant Design 6 |
+| 路由 | React Router v7 |
+| 服务端状态 | TanStack Query v5 |
+| HTTP / SSE | 原生 `fetch` + `ReadableStream` |
+| 测试 | Vitest + Testing Library |
+| 包管理 | pnpm |
+
+### 3.3 外部依赖
+
+| 服务 | 角色 | 来源 |
+|---|---|---|
+| 阿里云 DashScope（百炼） | LLM (qwen-plus) + Embedding (text-embedding-v3, 1024 维) | OpenAI 兼容协议 |
+| PostgreSQL 18 | 关系数据 + pgvector 向量存储 | docker image `pgvector/pgvector:pg18` |
+| Apache Kafka | 异步摄入消息队列 | docker image `apache/kafka:3.8.0` |
+
+---
+
+## 4. 模块边界
+
+### 4.1 后端模块
+
+包结构按"功能域 + 横切层"划分：
+
+```
+com.majm.rag/
+├── chat/                  # 对话域：单轮 + 多轮 SSE
+│   ├── ChatController
+│   ├── ChatService
+│   ├── ConversationPersistenceService     # 解决 self-invocation 的独立 @Service
+│   ├── ConversationRepository
+│   ├── domain/Conversation                # @Version 乐观锁
+│   └── dto/ {ChatRequest, ConversationMessageRequest, CreateConversationRequest, ConversationResponse}
+│
+├── knowledge/             # 知识库 + 文档域
+│   ├── controller/
+│   │   ├── KnowledgeBaseController        # KB CRUD + /search
+│   │   └── DocumentController              # 上传 / 列表 / 删除 / chunks
+│   ├── KnowledgeBaseService
+│   ├── DocumentService                    # 抽取自原 Controller，统一事务边��
+│   ├── ChunkQueryService                  # 通过 JdbcTemplate 查 vector_store
+│   ├── KnowledgeBaseRepository / DocumentRepository
+│   ├── domain/ {KnowledgeBase, Document, *Status}
+│   └── dto/ {Create*, Update*, *Response, SearchKnowledgeBaseRequest, ...}
+│
+├── ingestion/             # 摄入域：上传 → Kafka → 解析 → 切分 → embedding → 入向量库
+│   ├── DocumentUploadService              # 同步 API 入口（写 DB + 落盘 + 发 event）
+│   ├── IngestionEventListener             # @TransactionalEventListener(AFTER_COMMIT) 发 Kafka
+│   ├── IngestionRequestedEvent
+│   ├── IngestionConsumer                  # @KafkaListener，三段事务
+│   ├── IngestionStatusService             # markProcessing/markDone/markFailed（独立 bean）
+│   ├── DocumentParserFactory              # PDF/DOCX → Tika，TXT/MD → TextReader
+│   ├── StorageService / LocalStorageService
+│   └── dto/ {IngestionMessage, UploadDocumentResponse}
+│
+├── retrieval/             # 检索域
+│   ├── RetrievalService                   # vectorStore.similaritySearch + KB 过滤 + topK 钳制
+│   └── RetrievalLimits                    # DEFAULT_TOP_K=5, MAX_TOP_K=50
+│
+├── config/                # 横切配置
+│   ├── KafkaConfig                        # 主 topic + DLT + 退避重试
+│   ├── LlmConfig                          # ChatClient bean
+│   ├── VectorStoreConfig                  # PgVectorStore + FixedSizeBatchingStrategy
+│   ├── FixedSizeBatchingStrategy          # 解决 DashScope batch size <= 10 限制
+│   ├── OpenApiConfig                      # springdoc-openapi
+│   ├── CorsConfig                         # 仅 dev 放开 localhost:*
+│   ├── ApiKeyFilter                       # 可选 X-API-Key 过滤
+│   └── StartupValidator                   # prod 下强制非占位 API key / DB password
+│
+└── common/                # 错误响应与跨域异常
+    ├── GlobalExceptionHandler             # ResourceNotFound 404 / IAE 400 / Validation 400
+                                            # MaxUpload 413 / DataIntegrity 409 / OptLock 409
+                                            # Exception 500（traceId, 不漏栈）
+    ├── dto/ErrorResponse                  # {code, message, timestamp, traceId, fieldErrors[]}
+    └── exception/ResourceNotFoundException
+```
+
+### 4.2 前端模块
+
+```
+rag-admin/src/
+├── api/                  # 后端 fetch 封装
+│   ├── client.ts         # request<T> + streamRequest（SSE 行缓冲）
+│   ├── knowledge-base.ts
+│   ├── document.ts
+│   └── chat.ts
+├── hooks/
+│   ├── useKbList.ts      # TanStack Query
+│   ├── useDocList.ts     # 含 PENDING/PROCESSING 时的 3s 自动轮询
+│   └── useStreamingChat.ts
+├── layouts/AppLayout.tsx # 侧边栏 + 顶栏 + /api/actuator/health 30s 轮询
+├── pages/
+│   ├── knowledge-base/   # 列表 + 创建/编辑 Modal
+│   ├── document/         # 上传（Dragger）+ 列表 + ChunkDrawer + ErrorModal
+│   └── chat/             # KB 选择 + 消息流 + topK 调节 + 多/单轮切换 + ChunkContextDrawer
+├── types/api.ts          # 后端 DTO 镜像类型
+└── test/                 # Vitest（client.ts 单测，覆盖 SSE 跨 chunk 缓冲）
+```
+
+---
+
+## 5. 关键流程
+
+### 5.1 文档摄入（异步）
+
+```
+[用户]
+  │ POST /api/v1/knowledge-bases/{kbId}/documents (multipart)
+  ▼
+[DocumentController.upload]
+  ├─ DocumentUploadService.upload (in @Transactional)
+  │   ├─ 校验扩展名（pdf/docx/doc/md/txt 白名单 + 25MB 上限）
+  │   ├─ LocalStorageService.store → ~/rag-uploads/<kbId>/<docId>.<ext>  ← 路径用 docId，避免 traversal
+  │   ├─ documentRepository.save(doc, status=PENDING)
+  │   └─ eventPublisher.publishEvent(IngestionRequestedEvent)
+  ▼
+[Tx commit]
+  │
+  ▼
+[IngestionEventListener @TransactionalEventListener(AFTER_COMMIT)]
+  │ kafkaTemplate.send(document.ingestion, key=docId, IngestionMessage)
+  │
+  ▼ ─────── (response 202 Accepted to user) ───────
+  ▼
+[IngestionConsumer.consume @KafkaListener]
+  ├─ statusService.markProcessing(docId)         (短事务 1)
+  ├─ ingest(doc, kb)                              (无事务)
+  │   ├─ parserFactory.create(fileType, filePath).get()  Tika / TextReader
+  │   ├─ TokenTextSplitter (chunkSize, chunkOverlap)
+  │   ├─ 每个 chunk 注入 metadata: knowledge_base_id / document_id / document_name / chunk_index
+  │   └─ vectorStore.add(chunks)
+  │       └─ FixedSizeBatchingStrategy.batch(chunks, 10)
+  │           └─ 每批 ≤10 → embeddingModel.embed → INSERT INTO vector_store
+  │
+  ├─ on success: statusService.markDone(docId, count)        (短事务 2)
+  └─ on error  : statusService.markFailed(docId, msg) + throw (短事务 2'，异常向上抛)
+
+   [Kafka DefaultErrorHandler] 失败时按 ExponentialBackoff(1s, 2s, 4s) 重试 3 次
+   3 次仍失败 → DeadLetterPublishingRecoverer 写入 document.ingestion.dlt
+```
+
+**关键设计点**：
+- **AFTER_COMMIT 发 Kafka**：避免 DB 回滚后消息已经在 broker 上的不一致。
+- **三段事务**：Tika 解析 + embedding HTTP 调用都在事务外执行，不占用 DB 连接。
+- **`IngestionStatusService` 独立 bean**：避免 self-invocation 绕过 `@Transactional` AOP 代理（这是上线前修复的一个 showstopper bug）。
+- **FixedSizeBatchingStrategy**：百炼 embedding 单批最多 10 个，默认 `TokenCountBatchingStrategy` 会塞几十个，必败。
+- **DLT**：3 次重试后投递至 dead-letter topic，避免无限重试阻塞分区。
+
+### 5.2 多轮对话（SSE 流式）
+
+```
+[用户] POST /api/v1/chat/conversations  body={knowledgeBaseId}
+  ▼
+[ChatController.createConversation]
+  ▼
+ResponseEntity 201 Created + Location + ConversationResponse {id, ..., version=0}
+  ▼
+[用户] POST /api/v1/chat/conversations/{id}/messages  body={question, topK<=50}
+  ▼
+[ChatController.continueConversation] returns Flux<String>
+  │
+  ▼
+[ChatService.continueConversation]
+  ├─ conv = conversationRepository.findById(id) (else 404)
+  ├─ buildContext(kbId, question, topK):
+  │   └─ retrievalService.search → vectorStore.similaritySearch
+  │       (filter: metadata.knowledge_base_id == kbId; topK clamped to [1,50])
+  │   → 拼成 context 字符串
+  │
+  ├─ history = trimHistory(conv.messages + new userMsg, max=20)   ← 滑窗
+  ├─ conv.setMessages(history); conversationRepository.save(conv)
+  │   └─ Hibernate UPDATE WHERE version=?  (乐观锁)
+  │     若版本冲突 → ObjectOptimisticLockingFailureException → 409 CONCURRENT_UPDATE
+  │
+  └─ chatClient.prompt()
+       .system(RAG_SYSTEM_PROMPT, context)
+       .messages(history → UserMessage/AssistantMessage)
+       .stream().content()
+       .doOnNext(token → assistantReply.append(token); 推送到 SSE)
+       .doOnComplete(() →
+            persistenceService.appendAssistantMessage(id, assistantReply)
+                                 (独立 @Transactional 写入))
+```
+
+**关键设计点**：
+- **滑动窗口**：`app.chat.max-history-messages=20`，避免历史无限增长（每轮重写整 JSONB 列）。
+- **乐观锁**：`Conversation.version`（V5 migration 加列），并发写时只有一个成功，另一个收到 409。
+- **持久化分离**：`ConversationPersistenceService` 是独立 `@Service`，被 `chatService` 通过依赖注入调用，AOP 代理生效。
+- **错误流尚未结构化**：当前 SSE 流出错时反应式管道结束，客户端表现为半截响应。前端在 `useStreamingChat` 中捕捉异常并展示"连接中断，请重试"。生产改进项见第 8 节。
+
+### 5.3 知识库语义检索（直接 API）
+
+简化版的检索：
+```
+POST /api/v1/knowledge-bases/{kbId}/search  body={query, topK}
+  ▼
+RetrievalService.search → 返回 List<SearchResultItem>
+```
+
+主要供前端 Chat 测试台"查看召回 Chunks"使用——SSE 流不携带召回元数据，前端在流结束后单独发起 `/search` 请求获取展示。
+
+---
+
+## 6. 数据模型
+
+### 6.1 表结构（Flyway V1-V5）
+
+```sql
+knowledge_base
+  id UUID PK, name, description, embedding_model, chunk_size, chunk_overlap,
+  status, created_at, updated_at
+
+document
+  id UUID PK,
+  knowledge_base_id UUID NOT NULL REFERENCES knowledge_base(id) ON DELETE CASCADE,
+  name, file_type, file_path, status, error_message, chunk_count,
+  created_at, updated_at
+  INDEX (knowledge_base_id)
+
+vector_store              -- Spring AI 标准表（V4 引入）
+  id UUID PK, content TEXT, metadata JSONB, embedding VECTOR(1024)
+  HNSW INDEX (embedding vector_cosine_ops)
+  GIN-style: ((metadata->>'document_id')), ((metadata->>'knowledge_base_id'))
+
+conversation
+  id UUID PK,
+  knowledge_base_id UUID NOT NULL REFERENCES knowledge_base(id) ON DELETE CASCADE,
+  messages JSONB DEFAULT '[]',
+  version BIGINT NOT NULL DEFAULT 0,    -- V5 加，乐观锁
+  created_at, updated_at
+```
+
+### 6.2 删除级联策略
+
+| 触发 | DB 行为 | 应用补充 |
+|---|---|---|
+| 删除 KB | document、conversation 自动级联删除 | `KnowledgeBaseService.delete` 先收集 file_path 列表 → `vectorStore.delete(by kbId)` → `repository.deleteById` → `storageService.delete(file)` |
+| 删除 Document | （无级联到 vector_store，FK 缺失） | `DocumentService.delete` 先 `chunkQueryService.deleteByDocument` → `documentRepository.delete` → `storageService.delete(filePath)` |
+
+`vector_store` 与 `document` 之间没有外键（vector_store 是 Spring AI 管理的独立表），所以删除链由应用层显式协调。
+
+### 6.3 元数据约定
+
+`vector_store.metadata` 是 JSONB，约定字段：
+- `knowledge_base_id` — UUID 字符串
+- `document_id` — UUID 字符串
+- `document_name` — 原文件展示名（不参与检索过滤）
+- `chunk_index` — 整数，chunk 在文档中的顺序
+
+`RetrievalService` 通过 `FilterExpressionBuilder.eq("knowledge_base_id", kbId)` 把 KB 隔离下推到 SQL `WHERE metadata->>...`，再 ANN 召回。
+
+---
+
+## 7. 部署与配置
+
+### 7.1 启动依赖
+
+```bash
+# 后端
+docker-compose up -d        # 起 PG + Kafka
+export DASHSCOPE_API_KEY=sk-xxx
+mvn spring-boot:run         # Flyway 自动执行 V1-V5
+
+# 前端
+cd ../rag-admin
+pnpm install
+pnpm dev                    # http://localhost:5173
+```
+
+### 7.2 关键配置（`application.yml`）
+
+| 配置项 | 默认 | 说明 |
+|---|---|---|
+| `spring.datasource.{url,username,password}` | dev `rag/rag` | prod 由 `DB_*` env 强制覆盖（StartupValidator） |
+| `spring.ai.openai.{base-url, api-key}` | DashScope 百炼 | prod 拒绝 `dummy` |
+| `spring.ai.openai.embedding.options.model` | `text-embedding-v3` | 1024 维（V3 schema 对齐） |
+| `spring.ai.vectorstore.pgvector.dimensions` | 1024 | 改维度时需重建 vector_store |
+| `app.embedding.batch-size` | **10** | 百炼硬限；OpenAI 可设 2048 |
+| `app.chat.max-history-messages` | **20** | 多轮对话滑窗 |
+| `app.security.api-key-auth.{enabled, expected-key}` | dev `false` | prod 通过 env `API_KEY_AUTH_ENABLED=true` + `API_KEY=xxx` 开启 |
+| `spring.servlet.multipart.{max-file-size, max-request-size}` | 25MB / 30MB | 上传上限 |
+| `management.endpoints.web.base-path` | `/api/actuator` | 与业务 API 同前缀 |
+| `management.endpoints.web.exposure.include` | `health` | 只暴露 health；env/beans 等屏蔽 |
+
+### 7.3 部署拓扑（生产建议）
+
+```
+            Internet / 内网
+                  │
+                  ▼
+              Nginx 反代
+        ┌─────────┴─────────┐
+        │                   │
+     /api/* → Spring Boot  /* → 静态文件 (rag-admin/dist)
+                  │
+        ┌─────────┼──────────┐
+        ▼         ▼          ▼
+    PG VM    Kafka VM    LLM 调用
+                          (出口 NAT)
+```
+
+- **静态前端**：`pnpm build` → `dist/` 由 Nginx 直接 serve
+- **后端**：`mvn package -DskipTests` → fat jar，systemd 或 K8s Deployment
+- **数据卷**：磁盘存储 `/data/uploads`（替换默认 `~/rag-uploads`）；PG 数据卷
+- **健康探针**：K8s readinessProbe 指向 `/api/actuator/health/readiness`
+
+---
+
+## 8. 当前已知约束与改进项
+
+| 项 | 现状 | 改进 |
+|---|---|---|
+| SSE 错误事件 | 出错 SSE 流直接结束；客户端只能展示通用提示 | 改用 `ServerSentEvent<String>` builder + `event: error` |
+| ModelRouter | 已删（dead code） | `KnowledgeBase.embeddingModel` 字段语义降为"informational only"，全局只用一个 EmbeddingModel |
+| 单���例 Kafka | docker-compose 单 broker，无副本 | 生产改 3 broker + replication factor ≥ 2 |
+| API Key 鉴权 | 单租户共享 key，过滤器实现 | 真要多用户，换 OAuth2 / JWT |
+| 文件存储 | 本地磁盘 | 生产换 S3-compatible（OSS / MinIO） |
+| 集成测试 | 用本地 docker-compose 栈而非 Testcontainers | 等 Docker Engine 29 + docker-java 兼容性问题修复后切回 |
+| LLM 调用观测 | 仅 Spring AI 默认 metrics | 接 OpenTelemetry，导出到 Tempo/Jaeger |
+
+---
+
+## 9. 测试与质量
+
+| 类别 | 数量 | 说明 |
+|---|---|---|
+| 单元测试 | 21 | DocumentParserFactory, DocumentUploadService, ChatService, KnowledgeBaseService, FixedSizeBatchingStrategy, API client (Vitest) |
+| 集成测试 | 2 | IngestionConsumer end-to-end（PG + Kafka + WireMock 拦截 LLM） |
+| 健康端点 | 1 | `/api/actuator/health{,/liveness,/readiness}` |
+| 已知遗漏 | — | RetrievalService、SSE 流错误路径、ApiKeyFilter on/off 行为 |
+
+后端 23/23，前端 7/7（SSE 行缓冲 3 个测试覆盖跨 chunk 边界）。
+
+---
+
+## 10. 安全评估
+
+| 攻击面 | 缓解 |
+|---|---|
+| 路径穿越 (`getOriginalFilename`) | 磁盘命名固定为 `<docId>.<ext>`，原名只入 DB |
+| 上传 DoS | `max-file-size=25MB`，扩展名白名单，未来加 MIME 嗅探 |
+| SSRF (Tika URL fetch) | 已删 `URL` 分支 |
+| SQL 注入 | JPA / 参数化 SQL，全部用 `?` 占位 |
+| 凭证泄漏 | `application.yml` 默认值仅 dev 可用；prod `StartupValidator` fail-fast |
+| 错误信息泄漏 | `GlobalExceptionHandler` 仅返 traceId，详情写日志 |
+| CORS | 仅 `localhost:*`（dev）；生产同源不需 CORS |
+| Swagger 暴露 | dev 默认开放；生产用 `springdoc.swagger-ui.enabled=false` |
+| topK DoS | DTO `@Max(50)` + 服务层 clamp 双层防护 |
+| Kafka JSON 反序列化 | `spring.json.trusted.packages=com.majm.rag.*`（建议收紧到 `ingestion.dto`） |
+
+---
+
+## 11. 关键决策记录（ADR）
+
+| # | 决策 | 备选 | 选择理由 |
+|---|---|---|---|
+| 1 | 用 Kafka 异步摄入（非同步嵌入） | 同步 / RabbitMQ | 单次摄入耗时数秒～数分钟，需要解耦；Kafka 自带 partition + DLT |
+| 2 | pgvector + Spring AI VectorStore（非独立向量库） | Milvus / Qdrant / Pinecone | 单实例规模够用，省一个组件；过滤可下推到 SQL `WHERE` |
+| 3 | Spring AI BatchingStrategy → 自��现 `FixedSizeBatchingStrategy` | 用默认 TokenCountBatchingStrategy | 百炼硬限 batch ≤10，token-based 必败 |
+| 4 | 三段事务摄入（PROCESSING / 处理 / DONE-FAILED） | 单大事务 + Propagation.REQUIRES_NEW | self-invocation 绕过 AOP；连接池占用过长 |
+| 5 | `IngestionStatusService` 独立 `@Service` | `IngestionConsumer` 内部 `@Transactional` 方法 | self-invocation bug |
+| 6 | `vector_store` 独立表（V4） | 自定义 `document_chunk` 复用 PgVectorStore | PgVectorStore 只写 4 列，与自定义 NOT NULL 列冲突，是上线前 showstopper |
+| 7 | `Conversation.@Version` + 滑窗 | 直接锁 / 无锁 | JSONB 行写入并发冲突；历史无限增长导致 token 爆炸 |
+| 8 | actuator base-path = `/api/actuator` | 默认 `/actuator` | 与业务 API 同前缀，前端 Vite proxy 和 Nginx 不需要额外规则 |
+| 9 | 前后端拆为两个 git repo | monorepo | 团队独立维护，发布节奏不同 |
+| 10 | docker-java/Testcontainers 的 Docker Engine 29 兼容性问题 → 集成测试用本地 docker-compose | 强行 Testcontainers | 等上游修复，临时降级；集成测试覆盖度不变 |
+
+---
+
+## 12. 关联文档
+
+- 详细技术设计：`docs/architecture/TECHNICAL_DESIGN.md`
+- 历史规划：`docs/superpowers/plans/`
+- 历史设计稿：`docs/superpowers/specs/`
+- 前端设计：`docs/superpowers/specs/2026-05-07-admin-platform-design.md`
