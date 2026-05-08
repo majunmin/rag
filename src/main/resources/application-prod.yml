@@ -1,0 +1,34 @@
+# Production profile — strict secrets, Swagger UI off, structured logging
+# (logback-spring.xml will switch to JSON when this profile is active),
+# tuned Hikari pool. StartupValidator fail-fasts if DB_PASSWORD is the
+# dev default 'rag' or DASHSCOPE_API_KEY is empty / 'dummy' / 'test' /
+# 'changeme'.
+
+spring:
+  datasource:
+    hikari:
+      maximum-pool-size: ${DB_POOL_MAX:20}
+      minimum-idle: ${DB_POOL_MIN_IDLE:5}
+      connection-timeout: ${DB_POOL_CONNECTION_TIMEOUT_MS:3000}
+      max-lifetime: ${DB_POOL_MAX_LIFETIME_MS:1800000}   # 30m
+      leak-detection-threshold: ${DB_POOL_LEAK_DETECTION_MS:5000}
+  jpa:
+    show-sql: false
+
+# Swagger UI off in prod (the API is internal; we don't need the
+# auto-discovery surface). Re-enable per env if needed:
+#   SPRINGDOC_SWAGGERUI_ENABLED=true
+springdoc:
+  api-docs:
+    enabled: ${SPRINGDOC_APIDOCS_ENABLED:false}
+  swagger-ui:
+    enabled: ${SPRINGDOC_SWAGGERUI_ENABLED:false}
+
+logging:
+  level:
+    root: WARN
+    com.majm.rag: INFO
+    org.springframework.web: INFO
+    org.springframework.kafka: INFO
+    # Suppress Hikari verbose pool messages in steady state
+    com.zaxxer.hikari: INFO

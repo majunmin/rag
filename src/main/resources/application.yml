@@ -1,6 +1,14 @@
+# Common configuration shared across all profiles. Overrides live in
+# application-dev.yml and application-prod.yml. Activate via
+#   SPRING_PROFILES_ACTIVE=dev    (default for local development)
+# or
+#   SPRING_PROFILES_ACTIVE=prod   (Dockerfile sets this)
+
 spring:
   application:
     name: rag
+  profiles:
+    default: dev
   servlet:
     multipart:
       max-file-size: 25MB
@@ -9,25 +17,35 @@ spring:
     url: ${DB_URL:jdbc:postgresql://localhost:5432/rag}
     username: ${DB_USERNAME:rag}
     password: ${DB_PASSWORD:rag}
+    hikari:
+      maximum-pool-size: ${DB_POOL_MAX:10}
+      connection-timeout: ${DB_POOL_CONNECTION_TIMEOUT_MS:3000}
   jpa:
     hibernate:
       ddl-auto: none
-    show-sql: false
+    open-in-view: false
   flyway:
     enabled: true
     locations: classpath:db/migration
   kafka:
-    bootstrap-servers: localhost:9092
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
     consumer:
-      group-id: rag-ingestion
+      group-id: ${KAFKA_CONSUMER_GROUP_ID:rag-ingestion}
       auto-offset-reset: earliest
       key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
       value-deserializer: org.springframework.kafka.support.serializer.JsonDeserializer
       properties:
-        spring.json.trusted.packages: "com.majm.rag.*"
+        # Tightened to the single concrete package after security review;
+        # broader 'com.majm.rag.*' was too permissive.
+        spring.json.trusted.packages: "com.majm.rag.ingestion.dto"
     producer:
       key-serializer: org.apache.kafka.common.serialization.StringSerializer
       value-serializer: org.springframework.kafka.support.serializer.JsonSerializer
+    listener:
+      # Match KafkaConfig#ingestionTopic partitions (3) so all of them are
+      # consumed when running a single instance. Multiple instances should
+      # each get a fair share via Kafka's group coordinator.
+      concurrency: ${KAFKA_LISTENER_CONCURRENCY:3}
   ai:
     vectorstore:
       pgvector:
@@ -48,14 +66,14 @@ spring:
       base-url: ${OLLAMA_BASE_URL:http://localhost:11434}
       chat:
         options:
-          model: llama3.2
+          model: ${OLLAMA_CHAT_MODEL:llama3.2}
 
 app:
   storage:
-    base-path: ${user.home}/rag-uploads
+    base-path: ${APP_STORAGE_BASE_PATH:${user.home}/rag-uploads}
   ingestion:
-    topic: document.ingestion
-    dlt-topic: document.ingestion.dlt
+    topic: ${APP_INGESTION_TOPIC:document.ingestion}
+    dlt-topic: ${APP_INGESTION_DLT_TOPIC:document.ingestion.dlt}
   security:
     api-key-auth:
       enabled: ${API_KEY_AUTH_ENABLED:false}
@@ -65,9 +83,17 @@ app:
     # are kept in JSONB and replayed to the LLM on each turn. Avoids O(n^2)
     # token cost and unbounded JSONB growth on long conversations.
     max-history-messages: ${CHAT_MAX_HISTORY_MESSAGES:20}
+  embedding:
+    # DashScope hard limit is 10. OpenAI text-embedding-3 allows ~2048.
+    batch-size: ${APP_EMBEDDING_BATCH_SIZE:10}
 
 server:
-  port: 8080
+  port: ${SERVER_PORT:8080}
+  shutdown: graceful
+  tomcat:
+    accesslog:
+      enabled: ${SERVER_ACCESSLOG_ENABLED:false}
+      pattern: '%h %l %u %t "%r" %s %b %D'
 
 management:
   endpoints:
@@ -88,13 +114,3 @@ management:
       enabled: true
     readinessstate:
       enabled: true
-
-springdoc:
-  api-docs:
-    path: /v3/api-docs
-  swagger-ui:
-    path: /swagger-ui.html
-    operations-sorter: method
-    tags-sorter: alpha
-    try-it-out-enabled: true
-  packages-to-scan: com.majm.rag

@@ -1,0 +1,27 @@
+# Development profile — local docker-compose stack, Swagger UI on,
+# colored console logging. StartupValidator does NOT enforce real
+# secrets in this profile.
+
+spring:
+  jpa:
+    show-sql: false
+  # Swagger UI is enabled here (springdoc autoconfigures by default).
+
+springdoc:
+  api-docs:
+    path: /v3/api-docs
+  swagger-ui:
+    path: /swagger-ui.html
+    operations-sorter: method
+    tags-sorter: alpha
+    try-it-out-enabled: true
+  packages-to-scan: com.majm.rag
+
+logging:
+  level:
+    root: INFO
+    com.majm.rag: DEBUG
+    org.springframework.ai: INFO
+    # Hibernate SQL is noisy by default; flip on locally when needed.
+    org.hibernate.SQL: WARN
+    org.hibernate.orm.jdbc.bind: WARN
