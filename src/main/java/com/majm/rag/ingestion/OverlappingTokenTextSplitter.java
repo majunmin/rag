@@ -1,0 +1,80 @@
+package com.majm.rag.ingestion;
+
+import com.knuddels.jtokkit.Encodings;
+import com.knuddels.jtokkit.api.Encoding;
+import com.knuddels.jtokkit.api.EncodingType;
+import com.knuddels.jtokkit.api.IntArrayList;
+import org.springframework.ai.transformer.splitter.TextSplitter;
+
+import java.util.ArrayList;
+import java.util.List;
+
+/**
+ * Token-based text splitter with sliding-window overlap.
+ *
+ * <p>Spring AI's {@code TokenTextSplitter} does not support overlap — neighboring
+ * chunks share no content, so a sentence cut across a chunk boundary loses
+ * context for retrieval. This splitter slides a window of {@code chunkSize}
+ * tokens forward by {@code chunkSize - chunkOverlap} each step, so each chunk
+ * shares its first {@code chunkOverlap} tokens with the previous chunk's tail.
+ *
+ * <p>Tokenization uses jtokkit's {@code cl100k_base} encoding (same encoder
+ * Spring AI's TokenTextSplitter uses).
+ *
+ * <p>Splitting is purely token-based; punctuation-aware boundary selection is
+ * intentionally dropped. RAG retrieval quality is dominated by overlap, not by
+ * sentence-perfect chunk endings.
+ */
+public class OverlappingTokenTextSplitter extends TextSplitter {
+
+    private final Encoding encoding;
+    private final int chunkSize;
+    private final int chunkOverlap;
+
+    public OverlappingTokenTextSplitter(int chunkSize, int chunkOverlap) {
+        if (chunkSize <= 0) {
+            throw new IllegalArgumentException("chunkSize must be > 0, got " + chunkSize);
+        }
+        if (chunkOverlap < 0) {
+            throw new IllegalArgumentException("chunkOverlap must be >= 0, got " + chunkOverlap);
+        }
+        if (chunkOverlap >= chunkSize) {
+            throw new IllegalArgumentException(
+                "chunkOverlap (" + chunkOverlap + ") must be < chunkSize (" + chunkSize + ")");
+        }
+        this.encoding = Encodings.newDefaultEncodingRegistry().getEncoding(EncodingType.CL100K_BASE);
+        this.chunkSize = chunkSize;
+        this.chunkOverlap = chunkOverlap;
+    }
+
+    @Override
+    protected List<String> splitText(String text) {
+        if (text == null || text.isBlank()) {
+            return List.of();
+        }
+        IntArrayList tokens = encoding.encode(text);
+        int total = tokens.size();
+        if (total <= chunkSize) {
+            return List.of(text);
+        }
+
+        List<String> chunks = new ArrayList<>();
+        int step = chunkSize - chunkOverlap;
+        for (int start = 0; start < total; start += step) {
+            int end = Math.min(start + chunkSize, total);
+            chunks.add(encoding.decode(slice(tokens, start, end)));
+            if (end == total) {
+                break;
+            }
+        }
+        return chunks;
+    }
+
+    private static IntArrayList slice(IntArrayList src, int from, int to) {
+        IntArrayList out = new IntArrayList(to - from);
+        for (int i = from; i < to; i++) {
+            out.add(src.get(i));
+        }
+        return out;
+    }
+}

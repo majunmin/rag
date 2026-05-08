@@ -7,7 +7,6 @@ import com.majm.rag.knowledge.domain.KnowledgeBase;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.ai.document.DocumentReader;
-import org.springframework.ai.transformer.splitter.TokenTextSplitter;
 import org.springframework.ai.vectorstore.VectorStore;
 import org.springframework.kafka.annotation.KafkaListener;
 import org.springframework.stereotype.Component;
@@ -19,10 +18,6 @@ import java.util.Map;
 @RequiredArgsConstructor
 @Slf4j
 public class IngestionConsumer {
-
-    private static final int MIN_CHUNK_LENGTH_TO_EMBED = 5;
-    private static final int MAX_NUM_CHUNKS = 10000;
-    private static final boolean KEEP_SEPARATOR = true;
 
     private final KnowledgeBaseService kbService;
     private final IngestionStatusService statusService;
@@ -52,17 +47,9 @@ public class IngestionConsumer {
         DocumentReader reader = parserFactory.create(doc.getFileType(), doc.getFilePath());
         List<org.springframework.ai.document.Document> rawDocs = reader.get();
 
-        // Note: Spring AI's TokenTextSplitter has no "chunk overlap" concept.
-        // KnowledgeBase.chunkOverlap is mapped to minChunkSizeChars, preserving
-        // the (slightly off) behavior from the project's 1.0 days. True overlap
-        // would require a custom splitter wrapper; tracked as future work.
-        TokenTextSplitter splitter = TokenTextSplitter.builder()
-            .withChunkSize(kb.getChunkSize())
-            .withMinChunkSizeChars(kb.getChunkOverlap())
-            .withMinChunkLengthToEmbed(MIN_CHUNK_LENGTH_TO_EMBED)
-            .withMaxNumChunks(MAX_NUM_CHUNKS)
-            .withKeepSeparator(KEEP_SEPARATOR)
-            .build();
+        // Custom splitter: token-based with sliding-window overlap, controlled
+        // by KnowledgeBase.chunkSize / chunkOverlap. See OverlappingTokenTextSplitter.
+        var splitter = new OverlappingTokenTextSplitter(kb.getChunkSize(), kb.getChunkOverlap());
         List<org.springframework.ai.document.Document> chunks = splitter.apply(rawDocs);
 
         for (int i = 0; i < chunks.size(); i++) {
