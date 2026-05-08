@@ -20,8 +20,8 @@ import java.util.Map;
 @Slf4j
 public class IngestionConsumer {
 
-    private static final int MIN_CHUNK_SIZE = 5;
-    private static final int MAX_CHUNK_SIZE = 10000;
+    private static final int MIN_CHUNK_LENGTH_TO_EMBED = 5;
+    private static final int MAX_NUM_CHUNKS = 10000;
     private static final boolean KEEP_SEPARATOR = true;
 
     private final KnowledgeBaseService kbService;
@@ -52,8 +52,17 @@ public class IngestionConsumer {
         DocumentReader reader = parserFactory.create(doc.getFileType(), doc.getFilePath());
         List<org.springframework.ai.document.Document> rawDocs = reader.get();
 
-        TokenTextSplitter splitter = new TokenTextSplitter(kb.getChunkSize(), kb.getChunkOverlap(),
-            MIN_CHUNK_SIZE, MAX_CHUNK_SIZE, KEEP_SEPARATOR);
+        // Note: Spring AI's TokenTextSplitter has no "chunk overlap" concept.
+        // KnowledgeBase.chunkOverlap is mapped to minChunkSizeChars, preserving
+        // the (slightly off) behavior from the project's 1.0 days. True overlap
+        // would require a custom splitter wrapper; tracked as future work.
+        TokenTextSplitter splitter = TokenTextSplitter.builder()
+            .withChunkSize(kb.getChunkSize())
+            .withMinChunkSizeChars(kb.getChunkOverlap())
+            .withMinChunkLengthToEmbed(MIN_CHUNK_LENGTH_TO_EMBED)
+            .withMaxNumChunks(MAX_NUM_CHUNKS)
+            .withKeepSeparator(KEEP_SEPARATOR)
+            .build();
         List<org.springframework.ai.document.Document> chunks = splitter.apply(rawDocs);
 
         for (int i = 0; i < chunks.size(); i++) {

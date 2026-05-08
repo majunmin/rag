@@ -69,6 +69,12 @@ class IngestionConsumerIntegrationTest {
         wireMock.start();
         registry.add("spring.ai.openai.base-url", wireMock::baseUrl);
         registry.add("spring.ai.openai.api-key", () -> "test-key");
+        // Spring AI 1.1+ split per-model URL/key from the global ones; without
+        // these the embedding model falls back to api.openai.com.
+        registry.add("spring.ai.openai.embedding.base-url", wireMock::baseUrl);
+        registry.add("spring.ai.openai.embedding.api-key", () -> "test-key");
+        registry.add("spring.ai.openai.chat.base-url", wireMock::baseUrl);
+        registry.add("spring.ai.openai.chat.api-key", () -> "test-key");
         registry.add("spring.ai.openai.embedding.options.model", () -> "text-embedding-v3");
         // Make Spring AI retry failures only once with a tiny backoff so
         // failure-path tests don't sit in retry loops for a minute+.
