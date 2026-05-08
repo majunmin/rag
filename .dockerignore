@@ -1,0 +1,50 @@
+# Build artefacts
+target/
+*.iml
+.idea/
+.vscode/
+.settings/
+.classpath
+.project
+build/
+out/
+
+# OS / editor noise
+.DS_Store
+Thumbs.db
+*.swp
+*~
+
+# Local dev only
+.env
+.env.local
+*.log
+logs/
+
+# Project docs / planning artefacts
+docs/
+.superpowers/
+.claude/
+
+# Git itself (Docker should never need it)
+.git/
+.gitattributes
+.gitignore
+
+# Wrappers we don't need inside the image (build stage doesn't either —
+# the build stage only needs .mvn + mvnw, which IS copied by Dockerfile)
+.mvn/wrapper/maven-wrapper.jar
+
+# Tests aren't run in the container build (we ./mvnw -DskipTests there;
+# CI runs them separately)
+
+# Local upload dir — only the volume mount point is needed
+uploads/
+
+# README / changelogs aren't needed at runtime
+README.md
+CHANGELOG.md
+
+# Frontend (separate repo, but in case anyone copies it in)
+admin/
+rag-admin/
