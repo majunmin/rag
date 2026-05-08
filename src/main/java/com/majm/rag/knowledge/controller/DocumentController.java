@@ -1,7 +1,8 @@
-package com.majm.rag.knowledge;
+package com.majm.rag.knowledge.controller;
 
 import com.majm.rag.ingestion.DocumentUploadService;
 import com.majm.rag.ingestion.dto.UploadDocumentResponse;
+import com.majm.rag.knowledge.DocumentService;
 import com.majm.rag.knowledge.dto.DocumentChunkResponse;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;

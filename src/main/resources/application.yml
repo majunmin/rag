@@ -69,6 +69,26 @@ app:
 server:
   port: 8080
 
+management:
+  endpoints:
+    web:
+      base-path: /api/actuator
+      exposure:
+        include: health
+  endpoint:
+    health:
+      # show-details=when-authorized hides db/disk/etc. details from anonymous
+      # callers; the simple {status:UP|DOWN} body is enough for the admin UI
+      # health indicator and external load balancers.
+      show-details: when-authorized
+      probes:
+        enabled: true
+  health:
+    livenessstate:
+      enabled: true
+    readinessstate:
+      enabled: true
+
 springdoc:
   api-docs:
     path: /v3/api-docs

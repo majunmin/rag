@@ -24,7 +24,7 @@ public class ApiKeyFilter {
         "/v3/api-docs",
         "/swagger-ui",
         "/swagger-resources",
-        "/actuator/health"
+        "/api/actuator/health"
     );
 
     @Bean

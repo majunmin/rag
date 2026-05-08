@@ -1,5 +1,6 @@
-package com.majm.rag.knowledge;
+package com.majm.rag.knowledge.controller;
 
+import com.majm.rag.knowledge.KnowledgeBaseService;
 import com.majm.rag.knowledge.dto.CreateKnowledgeBaseRequest;
 import com.majm.rag.knowledge.dto.KnowledgeBaseResponse;
 import com.majm.rag.knowledge.dto.SearchKnowledgeBaseRequest;

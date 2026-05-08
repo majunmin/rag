@@ -14,7 +14,7 @@ public record ChatRequest(
     @Min(0) @Max(RetrievalLimits.MAX_TOP_K) int topK
 ) {
     public ChatRequest {
-        if (topK <= 0) {
+        if (topK == 0) {
             topK = RetrievalLimits.DEFAULT_TOP_K;
         }
     }

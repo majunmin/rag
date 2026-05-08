@@ -146,7 +146,11 @@ class IngestionConsumerIntegrationTest {
         UUID docId = uploadFile(kb.getId(), "integration-test-fail.txt",
             "Whatever content; the embeddings stub will 500.".getBytes());
 
-        await().atMost(Duration.ofSeconds(60))
+        // Each Kafka retry resets PROCESSING then writes FAILED, so the
+        // observable status flickers until DLT publish stops the loop. Wait
+        // long enough for KafkaConfig's DefaultErrorHandler to exhaust its
+        // 3-attempt backoff (1s + 2s + 4s = 7s nominal, plus pull/poll jitter).
+        await().atMost(Duration.ofSeconds(90))
             .pollInterval(Duration.ofMillis(500))
             .untilAsserted(() -> {
                 Document doc = documentRepository.findById(docId).orElseThrow();
