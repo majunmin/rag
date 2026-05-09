@@ -13,5 +13,13 @@ public final class RetrievalLimits {
     /** Upper bound on top-K to prevent runaway pgvector scans and prompt-token blowup. */
     public static final int MAX_TOP_K = 50;
 
+    /**
+     * Upper bound on top-K-recall (the number of candidates fetched from the
+     * vector store before rerank). DashScope gte-rerank-v2 accepts up to 500
+     * documents per call but past ~50 the rerank latency dominates. Tighten
+     * here if needed.
+     */
+    public static final int MAX_TOP_K_RECALL = 100;
+
     private RetrievalLimits() {}
 }

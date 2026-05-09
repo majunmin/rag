@@ -86,6 +86,22 @@ app:
   embedding:
     # DashScope hard limit is 10. OpenAI text-embedding-3 allows ~2048.
     batch-size: ${APP_EMBEDDING_BATCH_SIZE:10}
+  rerank:
+    # Two-stage retrieval: vector recall picks top-k-recall candidates, then
+    # this cross-encoder rerank model rescores (query, chunk) pairs and we
+    # keep the top-k requested by the caller. Set enabled=false to skip
+    # rerank entirely (recall-only fallback).
+    enabled: ${APP_RERANK_ENABLED:true}
+    model: ${APP_RERANK_MODEL:gte-rerank-v2}
+    # DashScope rerank lives at a different host than the OpenAI-compatible
+    # /chat and /embeddings endpoints; default base-url points at the native
+    # API root.
+    base-url: ${APP_RERANK_BASE_URL:https://dashscope.aliyuncs.com/api/v1}
+    api-key: ${APP_RERANK_API_KEY:${DASHSCOPE_API_KEY:${OPENAI_API_KEY:dummy}}}
+    # How many candidates to fetch from the vector store before rerank.
+    # Higher = better recall but slower + costlier rerank.
+    top-k-recall: ${APP_RERANK_TOP_K_RECALL:20}
+    timeout-ms: ${APP_RERANK_TIMEOUT_MS:3000}
 
 server:
   port: ${SERVER_PORT:8080}
