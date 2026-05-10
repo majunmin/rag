@@ -1,6 +1,8 @@
 package com.majm.rag.retrieval;
 
 import lombok.RequiredArgsConstructor;
+import org.apache.commons.collections4.CollectionUtils;
+import org.apache.commons.lang3.StringUtils;
 import org.springframework.ai.document.Document;
 import org.springframework.ai.vectorstore.SearchRequest;
 import org.springframework.ai.vectorstore.VectorStore;
@@ -41,6 +43,12 @@ public class RetrievalService {
     private int defaultTopKRecall;
 
     public List<Document> search(UUID knowledgeBaseId, String query, int topK) {
+        if (knowledgeBaseId == null) {
+            throw new IllegalArgumentException("knowledgeBaseId is required");
+        }
+        if (StringUtils.isBlank(query)) {
+            throw new IllegalArgumentException("query is required");
+        }
         int finalTopK = clamp(topK, 1, RetrievalLimits.MAX_TOP_K);
         int recallSize = clamp(defaultTopKRecall, finalTopK, RetrievalLimits.MAX_TOP_K_RECALL);
 
@@ -53,7 +61,7 @@ public class RetrievalService {
                 .build()
         );
 
-        if (candidates == null || candidates.isEmpty()) {
+        if (CollectionUtils.isEmpty(candidates)) {
             return List.of();
         }
         return rerankService.rerank(query, candidates, finalTopK);

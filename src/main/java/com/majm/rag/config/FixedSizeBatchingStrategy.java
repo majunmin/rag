@@ -1,5 +1,7 @@
 package com.majm.rag.config;
 
+import org.apache.commons.collections4.CollectionUtils;
+import org.apache.commons.lang3.Validate;
 import org.springframework.ai.document.Document;
 import org.springframework.ai.embedding.BatchingStrategy;
 
@@ -23,15 +25,13 @@ public class FixedSizeBatchingStrategy implements BatchingStrategy {
     private final int maxBatchSize;
 
     public FixedSizeBatchingStrategy(int maxBatchSize) {
-        if (maxBatchSize < 1) {
-            throw new IllegalArgumentException("maxBatchSize must be >= 1, got " + maxBatchSize);
-        }
+        Validate.isTrue(maxBatchSize >= 1, "maxBatchSize must be >= 1, got %d", maxBatchSize);
         this.maxBatchSize = maxBatchSize;
     }
 
     @Override
     public List<List<Document>> batch(List<Document> documents) {
-        if (documents == null || documents.isEmpty()) {
+        if (CollectionUtils.isEmpty(documents)) {
             return List.of();
         }
         List<List<Document>> batches = new ArrayList<>(

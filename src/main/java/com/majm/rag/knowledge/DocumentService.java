@@ -6,6 +6,7 @@ import com.majm.rag.knowledge.domain.Document;
 import com.majm.rag.knowledge.dto.DocumentChunkResponse;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.lang3.StringUtils;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
@@ -13,6 +14,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Objects;
 import java.util.UUID;
 
 @Slf4j
@@ -26,6 +28,9 @@ public class DocumentService {
 
     @Transactional(readOnly = true)
     public Page<DocumentListItem> list(UUID kbId, Pageable pageable) {
+        if (kbId == null) {
+            throw new IllegalArgumentException("kbId is required");
+        }
         return documentRepository.findByKnowledgeBaseId(kbId, pageable)
             .map(d -> new DocumentListItem(
                 d.getId(), d.getName(), d.getFileType(),
@@ -46,15 +51,26 @@ public class DocumentService {
         chunkQueryService.deleteByDocument(docId);
         documentRepository.delete(doc);
 
-        if (filePath != null && !filePath.isBlank()) {
+        if (StringUtils.isNotBlank(filePath)) {
             storageService.delete(filePath);
         }
     }
 
     private Document loadAndCheckOwnership(UUID kbId, UUID docId) {
+        if (kbId == null) {
+            throw new IllegalArgumentException("kbId is required");
+        }
+        if (docId == null) {
+            throw new IllegalArgumentException("docId is required");
+        }
+
         Document doc = documentRepository.findById(docId)
             .orElseThrow(() -> ResourceNotFoundException.of("Document", docId));
-        if (doc.getKnowledgeBase() == null || !kbId.equals(doc.getKnowledgeBase().getId())) {
+
+        UUID ownerId = doc.getKnowledgeBase() == null ? null : doc.getKnowledgeBase().getId();
+        if (!Objects.equals(kbId, ownerId)) {
+            // Don't leak whether the doc exists under a different KB; treat
+            // both "not found" and "wrong KB" as plain 404 to the client.
             throw ResourceNotFoundException.of("Document", docId);
         }
         return doc;

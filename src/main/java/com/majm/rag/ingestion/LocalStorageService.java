@@ -1,6 +1,8 @@
 package com.majm.rag.ingestion;
 
 import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.io.FilenameUtils;
+import org.apache.commons.lang3.StringUtils;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
@@ -11,6 +13,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Set;
 import java.util.UUID;
+import java.util.regex.Pattern;
 
 @Service
 @Slf4j
@@ -18,6 +21,7 @@ public class LocalStorageService implements StorageService {
 
     private static final Set<String> ALLOWED_EXTENSIONS = Set.of("pdf", "docx", "doc", "md", "txt");
     private static final String DEFAULT_EXTENSION = "txt";
+    private static final Pattern SAFE_EXT_PATTERN = Pattern.compile("[a-z0-9]{1,8}");
 
     @Value("${app.storage.base-path:/data/uploads}")
     private String basePath;
@@ -38,6 +42,9 @@ public class LocalStorageService implements StorageService {
 
     @Override
     public void delete(String filePath) {
+        if (StringUtils.isBlank(filePath)) {
+            return;
+        }
         try {
             Files.deleteIfExists(Path.of(filePath));
         } catch (IOException e) {
@@ -45,16 +52,15 @@ public class LocalStorageService implements StorageService {
         }
     }
 
+    /**
+     * Returns a safe lower-cased extension constrained to the allow-list, or
+     * {@link #DEFAULT_EXTENSION} when the input is null/blank/unrecognized.
+     * Uses Commons FilenameUtils so we don't have to think about path
+     * separators or "..".
+     */
     private String sanitizedExtension(String originalFilename) {
-        if (originalFilename == null) {
-            return DEFAULT_EXTENSION;
-        }
-        int dot = originalFilename.lastIndexOf('.');
-        if (dot < 0 || dot == originalFilename.length() - 1) {
-            return DEFAULT_EXTENSION;
-        }
-        String raw = originalFilename.substring(dot + 1).toLowerCase();
-        if (!raw.matches("[a-z0-9]{1,8}")) {
+        String raw = StringUtils.lowerCase(FilenameUtils.getExtension(StringUtils.trimToEmpty(originalFilename)));
+        if (StringUtils.isBlank(raw) || !SAFE_EXT_PATTERN.matcher(raw).matches()) {
             return DEFAULT_EXTENSION;
         }
         return ALLOWED_EXTENSIONS.contains(raw) ? raw : DEFAULT_EXTENSION;

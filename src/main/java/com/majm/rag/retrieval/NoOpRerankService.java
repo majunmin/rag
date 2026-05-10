@@ -1,5 +1,6 @@
 package com.majm.rag.retrieval;
 
+import org.apache.commons.collections4.CollectionUtils;
 import org.springframework.ai.document.Document;
 
 import java.util.List;
@@ -13,7 +14,7 @@ public class NoOpRerankService implements RerankService {
 
     @Override
     public List<Document> rerank(String query, List<Document> candidates, int topK) {
-        if (candidates == null || candidates.isEmpty() || topK <= 0) {
+        if (CollectionUtils.isEmpty(candidates) || topK <= 0) {
             return List.of();
         }
         return candidates.size() <= topK

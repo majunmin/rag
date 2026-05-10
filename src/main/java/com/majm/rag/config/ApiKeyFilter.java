@@ -5,6 +5,7 @@ import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.lang3.StringUtils;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.web.servlet.FilterRegistrationBean;
 import org.springframework.context.annotation.Bean;
@@ -40,7 +41,7 @@ public class ApiKeyFilter {
     }
 
     private OncePerRequestFilter buildFilter(boolean enabled, String expectedKey) {
-        if (enabled && (expectedKey == null || expectedKey.isBlank())) {
+        if (enabled && StringUtils.isBlank(expectedKey)) {
             throw new IllegalStateException(
                 "app.security.api-key-auth.enabled=true but app.security.api-key-auth.expected-key is empty");
         }
@@ -55,7 +56,10 @@ public class ApiKeyFilter {
                 }
 
                 String provided = request.getHeader(HEADER);
-                if (provided == null || !provided.equals(expectedKey)) {
+                // StringUtils.equals is null-safe and does the right thing
+                // for the timing-attack-irrelevant case (we're behind TLS;
+                // exact-match on a single shared secret).
+                if (!StringUtils.equals(provided, expectedKey)) {
                     log.debug("Rejecting request to {}: missing or invalid {}", request.getRequestURI(), HEADER);
                     response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
                     response.setContentType("application/json");
@@ -69,14 +73,9 @@ public class ApiKeyFilter {
     }
 
     private boolean isGuarded(String uri) {
-        if (!uri.startsWith(GUARDED_PREFIX)) {
+        if (!StringUtils.startsWith(uri, GUARDED_PREFIX)) {
             return false;
         }
-        for (String prefix : EXEMPT_PREFIXES) {
-            if (uri.startsWith(prefix)) {
-                return false;
-            }
-        }
-        return true;
+        return EXEMPT_PREFIXES.stream().noneMatch(p -> StringUtils.startsWith(uri, p));
     }
 }

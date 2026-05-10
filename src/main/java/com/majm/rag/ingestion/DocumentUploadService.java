@@ -6,6 +6,8 @@ import com.majm.rag.knowledge.KnowledgeBaseService;
 import com.majm.rag.knowledge.domain.Document;
 import com.majm.rag.knowledge.domain.KnowledgeBase;
 import lombok.RequiredArgsConstructor;
+import org.apache.commons.io.FilenameUtils;
+import org.apache.commons.lang3.StringUtils;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -52,19 +54,18 @@ public class DocumentUploadService {
         if (file == null || file.isEmpty()) {
             throw new IllegalArgumentException("Uploaded file is empty");
         }
-        String name = file.getOriginalFilename();
-        if (name == null || name.isBlank()) {
+        if (StringUtils.isBlank(file.getOriginalFilename())) {
             throw new IllegalArgumentException("Uploaded file has no name");
         }
-        String ext = extensionOf(name);
-        if (ext == null || !ALLOWED_EXTENSIONS.contains(ext)) {
+        String ext = extensionOf(file.getOriginalFilename());
+        if (StringUtils.isBlank(ext) || !ALLOWED_EXTENSIONS.contains(ext)) {
             throw new IllegalArgumentException("Unsupported file type. Allowed: " + ALLOWED_EXTENSIONS);
         }
     }
 
     private String detectFileType(String filename) {
         String ext = extensionOf(filename);
-        if (ext == null) {
+        if (StringUtils.isBlank(ext)) {
             return "TXT";
         }
         return switch (ext) {
@@ -75,14 +76,8 @@ public class DocumentUploadService {
         };
     }
 
+    /** Returns the lower-cased extension, or empty string when none. Null-safe. */
     private String extensionOf(String filename) {
-        if (filename == null) {
-            return null;
-        }
-        int dot = filename.lastIndexOf('.');
-        if (dot < 0 || dot == filename.length() - 1) {
-            return null;
-        }
-        return filename.substring(dot + 1).toLowerCase();
+        return StringUtils.lowerCase(FilenameUtils.getExtension(StringUtils.trimToEmpty(filename)));
     }
 }

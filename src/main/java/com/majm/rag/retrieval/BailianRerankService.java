@@ -2,6 +2,9 @@ package com.majm.rag.retrieval;
 
 import com.fasterxml.jackson.annotation.JsonInclude;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.collections4.CollectionUtils;
+import org.apache.commons.collections4.MapUtils;
+import org.apache.commons.lang3.StringUtils;
 import org.springframework.ai.document.Document;
 import org.springframework.http.HttpStatusCode;
 import org.springframework.http.MediaType;
@@ -12,6 +15,7 @@ import org.springframework.web.client.RestClient;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -46,7 +50,7 @@ public class BailianRerankService implements RerankService {
 
     @Override
     public List<Document> rerank(String query, List<Document> candidates, int topK) {
-        if (candidates == null || candidates.isEmpty() || topK <= 0) {
+        if (CollectionUtils.isEmpty(candidates) || topK <= 0) {
             return List.of();
         }
         if (candidates.size() == 1) {
@@ -54,7 +58,7 @@ public class BailianRerankService implements RerankService {
         }
 
         List<String> docs = candidates.stream()
-            .map(d -> d.getText() == null ? "" : d.getText())
+            .map(d -> StringUtils.defaultString(d.getText()))
             .toList();
 
         try {
@@ -70,13 +74,14 @@ public class BailianRerankService implements RerankService {
                 })
                 .body(RerankResponse.class);
 
-            if (resp == null || resp.output() == null || resp.output().results() == null
-                || resp.output().results().isEmpty()) {
+            List<RerankResult> results = (resp == null || resp.output() == null)
+                ? null : resp.output().results();
+            if (CollectionUtils.isEmpty(results)) {
                 log.warn("rerank returned no results; falling back to recall order");
                 return fallback(candidates, topK);
             }
 
-            List<RerankResult> sorted = new ArrayList<>(resp.output().results());
+            List<RerankResult> sorted = new ArrayList<>(results);
             sorted.sort(Comparator.comparingDouble(RerankResult::relevance_score).reversed());
 
             List<Document> reordered = new ArrayList<>(Math.min(topK, sorted.size()));
@@ -105,7 +110,7 @@ public class BailianRerankService implements RerankService {
     }
 
     private static Map<String, Object> scoredMetadata(Map<String, Object> base, double score) {
-        var copy = new java.util.HashMap<String, Object>(base == null ? Map.of() : base);
+        Map<String, Object> copy = new HashMap<>(MapUtils.emptyIfNull(base));
         copy.put("rerank_score", score);
         return copy;
     }

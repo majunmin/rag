@@ -4,6 +4,8 @@ import com.knuddels.jtokkit.Encodings;
 import com.knuddels.jtokkit.api.Encoding;
 import com.knuddels.jtokkit.api.EncodingType;
 import com.knuddels.jtokkit.api.IntArrayList;
+import org.apache.commons.lang3.StringUtils;
+import org.apache.commons.lang3.Validate;
 import org.springframework.ai.transformer.splitter.TextSplitter;
 
 import java.util.ArrayList;
@@ -32,16 +34,10 @@ public class OverlappingTokenTextSplitter extends TextSplitter {
     private final int chunkOverlap;
 
     public OverlappingTokenTextSplitter(int chunkSize, int chunkOverlap) {
-        if (chunkSize <= 0) {
-            throw new IllegalArgumentException("chunkSize must be > 0, got " + chunkSize);
-        }
-        if (chunkOverlap < 0) {
-            throw new IllegalArgumentException("chunkOverlap must be >= 0, got " + chunkOverlap);
-        }
-        if (chunkOverlap >= chunkSize) {
-            throw new IllegalArgumentException(
-                "chunkOverlap (" + chunkOverlap + ") must be < chunkSize (" + chunkSize + ")");
-        }
+        Validate.isTrue(chunkSize > 0, "chunkSize must be > 0, got %d", chunkSize);
+        Validate.isTrue(chunkOverlap >= 0, "chunkOverlap must be >= 0, got %d", chunkOverlap);
+        Validate.isTrue(chunkOverlap < chunkSize,
+            "chunkOverlap (%d) must be < chunkSize (%d)", chunkOverlap, chunkSize);
         this.encoding = Encodings.newDefaultEncodingRegistry().getEncoding(EncodingType.CL100K_BASE);
         this.chunkSize = chunkSize;
         this.chunkOverlap = chunkOverlap;
@@ -49,7 +45,7 @@ public class OverlappingTokenTextSplitter extends TextSplitter {
 
     @Override
     protected List<String> splitText(String text) {
-        if (text == null || text.isBlank()) {
+        if (StringUtils.isBlank(text)) {
             return List.of();
         }
         IntArrayList tokens = encoding.encode(text);

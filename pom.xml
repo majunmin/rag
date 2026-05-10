@@ -106,6 +106,25 @@
             <version>8.0</version>
         </dependency>
 
+        <!-- Apache Commons utilities — defensive null/blank/empty handling.
+             commons-lang3 is managed by Spring Boot. The other two need explicit
+             versions; pinning them here makes the dependency declaration
+             survive Tika version bumps that might drop the transitive. -->
+        <dependency>
+            <groupId>org.apache.commons</groupId>
+            <artifactId>commons-lang3</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.apache.commons</groupId>
+            <artifactId>commons-collections4</artifactId>
+            <version>4.5.0</version>
+        </dependency>
+        <dependency>
+            <groupId>commons-io</groupId>
+            <artifactId>commons-io</artifactId>
+            <version>2.21.0</version>
+        </dependency>
+
         <!-- OpenAPI 3.0 / Swagger UI -->
         <dependency>
             <groupId>org.springdoc</groupId>
