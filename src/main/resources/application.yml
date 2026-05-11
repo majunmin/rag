@@ -102,6 +102,20 @@ app:
     # Higher = better recall but slower + costlier rerank.
     top-k-recall: ${APP_RERANK_TOP_K_RECALL:20}
     timeout-ms: ${APP_RERANK_TIMEOUT_MS:3000}
+    # Rerank returns (finalTopK * expand-factor) candidates so MMR has headroom
+    # to drop duplicates. 2 is a safe default; bump to 3 if heavy overlap.
+    expand-factor: ${APP_RERANK_EXPAND_FACTOR:2}
+    # Drop candidates with rerank_score below this. Negative = disabled.
+    # When all candidates are filtered out the service returns empty context,
+    # letting the LLM prompt hit its "I don't know" branch instead of
+    # hallucinating from unrelated chunks. Start with -1 (off); after seeing
+    # real rerank score distributions, a typical cut-off is 0.2-0.3.
+    score-threshold: ${APP_RERANK_SCORE_THRESHOLD:-1.0}
+    # MMR de-duplication of near-identical chunks (overlap slices show up
+    # multiple times otherwise). lambda in [0,1]: 1 = pure relevance, 0 =
+    # pure diversity. 0.7 is a reasonable default.
+    mmr-enabled: ${APP_RERANK_MMR_ENABLED:true}
+    mmr-lambda: ${APP_RERANK_MMR_LAMBDA:0.7}
 
 server:
   port: ${SERVER_PORT:8080}
