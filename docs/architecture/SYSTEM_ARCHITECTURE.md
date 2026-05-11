@@ -455,11 +455,12 @@ pnpm dev                    # http://localhost:5173
 
 | 项 | 现状 | 改进 |
 |---|---|---|
-| SSE 错误事件 | 出错 SSE 流直接结束；客户端只能展示通用提示 | 改用 `ServerSentEvent<String>` builder + `event: error` |
+| SSE 错误事件 | `event: token / done / error` 三类帧；error 帧体为 `ErrorResponse` JSON 含 traceId | 见 `ChatSseEvents`；前端 `StreamServerError` 已对应消费 |
 | ModelRouter | 已删（dead code） | `KnowledgeBase.embeddingModel` 字段语义降为"informational only"，全局只用一个 EmbeddingModel |
 | 单���例 Kafka | docker-compose 单 broker，无副本 | 生产改 3 broker + replication factor ≥ 2 |
 | API Key 鉴权 | 单租户共享 key，过滤器实现 | 真要多用户，换 OAuth2 / JWT |
-| 文件存储 | 本地磁盘 | 生产换 S3-compatible（OSS / MinIO） |
+| 文件存储 | 本地磁盘；KB / Document 删除时已联动 `storageService.delete(filePath)` | 生产换 S3-compatible（OSS / MinIO） |
+| 检索后处理 | recall→cross-encoder rerank→`score-threshold` 过滤→MMR 去冗余 | rerank 策略调研见 `docs/research/2026-05-11-rerank-strategies.md` |
 | 集成测试 | 用本地 docker-compose 栈而非 Testcontainers | 等 Docker Engine 29 + docker-java 兼容性问题修复后切回 |
 | LLM 调用观测 | 仅 Spring AI 默认 metrics | 接 OpenTelemetry，导出到 Tempo/Jaeger |
 
@@ -469,12 +470,12 @@ pnpm dev                    # http://localhost:5173
 
 | 类别 | 数量 | 说明 |
 |---|---|---|
-| 单元测试 | 21 | DocumentParserFactory, DocumentUploadService, ChatService, KnowledgeBaseService, FixedSizeBatchingStrategy, API client (Vitest) |
+| 单元测试 | 后端 ~40 / 前端 12 | DocumentParserFactory, DocumentUploadService, ChatService, KnowledgeBaseService（含 delete 路径）, FixedSizeBatchingStrategy, MmrDeduplicator, RetrievalService, ChatSseEvents, StartupValidator, API client (Vitest) |
 | 集成测试 | 2 | IngestionConsumer end-to-end（PG + Kafka + WireMock 拦截 LLM） |
 | 健康端点 | 1 | `/api/actuator/health{,/liveness,/readiness}` |
-| 已知遗漏 | — | RetrievalService、SSE 流错误路径、ApiKeyFilter on/off 行为 |
+| 已知遗漏 | — | ApiKeyFilter on/off 行为、ChatController 端到端 SSE |
 
-后端 23/23，前端 7/7（SSE 行缓冲 3 个测试覆盖跨 chunk 边界）。
+后端全绿，前端 12/12（SSE 行缓冲 + event 类型路由覆盖跨 chunk 边界与 error 帧）。
 
 ---
 

@@ -76,16 +76,23 @@
 
 ### 1.6 SSE 流格式
 
-当前实现：`Flux<String>` 直接返回，每条 `data: <token>` + 空行。无 `event:` 字段，无 `[DONE]` sentinel。
+由 `ChatSseEvents.wrap(Flux<String>)` 包装为 `Flux<ServerSentEvent<String>>`，三类帧：
 
-前端 `streamRequest` 解析：
-- 跨 chunk 边界缓冲（`buffer` 变量）
-- 行尾 `\n` 切分
-- 仅取 `data: ` 前缀的行
-- 跳过 `[DONE]`（兼容兼容）
-- 出错时整个流被前端 catch，UI 显示"连接中断，请重试"
+| event | data | 时机 |
+|---|---|---|
+| `token` | 单个 LLM token 文本 | 每个上游 `onNext` |
+| `done` | 空字符串 | 流正常结束 |
+| `error` | `ErrorResponse` JSON（`{code, message, timestamp, traceId}`） | 上游 `onError`；同时服务端 `log.error("[{traceId}] SSE stream failed", t)` 写完整堆栈 |
 
-**待改进**：增加 `event: error` 事件携带 traceId，让客户端能展示具体原因。
+前端 `streamRequest`（`rag-admin/src/api/client.ts`）按事件类型分流：
+- `token` → `controller.enqueue(data)`（空字符串也保留，Spring 对 `""` 元素发 `data:\n\n`）
+- `done` → `controller.close()`
+- `error` → `controller.error(new StreamServerError(payload))`，携带 `code` + `traceId`
+- 兼容性：未知事件类型当 token 处理；`[DONE]` 旧 sentinel 仍被跳过
+- 跨 chunk 边界缓冲（`buffer` 变量），CRLF 与 LF 都支持
+- `useStreamingChat` 捕获 `StreamServerError` 后，把 `message（trace: xxxxxxxx）` 追加到当前 AI 消息尾部作为 `⚠️` 标记
+
+测试：`ChatSseEventsTest`（4 case：正常完成 / 上游异常 / 流首异常 / 空流）；前端 `api.client.test.ts`（12 case，覆盖空 token、CRLF、TCP 碎片）。
 
 ---
 
@@ -305,26 +312,36 @@ DB 提交后才发消息：DB 回滚时 Kafka 上不会留下幽灵消息；同�
 
 ## 4. 检索层
 
-### 4.1 RetrievalService
+### 4.1 RetrievalService（多阶段后处理）
 
-```java
-@Service @RequiredArgsConstructor
-public class RetrievalService {
-    private static final String KNOWLEDGE_BASE_ID_FILTER = "knowledge_base_id";
-    private final VectorStore vectorStore;
+四阶段流水线：
 
-    public List<Document> search(UUID kbId, String query, int topK) {
-        int clamped = Math.min(Math.max(topK, 1), RetrievalLimits.MAX_TOP_K);  // [1,50]
-        var filter = new FilterExpressionBuilder();
-        return vectorStore.similaritySearch(SearchRequest.builder()
-            .query(query).topK(clamped)
-            .filterExpression(filter.eq(KNOWLEDGE_BASE_ID_FILTER, kbId.toString()).build())
-            .build());
-    }
-}
+```
+向量召回（recall = finalTopK × expand-factor）
+  ↓ Spring AI VectorStore.similaritySearch + KB 过滤
+cross-encoder rerank（Aliyun gte-rerank）
+  ↓ 写回 metadata.rerank_score
+score-threshold 过滤
+  ↓ 丢弃 < APP_RERANK_SCORE_THRESHOLD 的候选；无 rerank_score 的 fail-soft 保留
+MMR 去冗余
+  ↓ MmrDeduplicator.apply(ranked, finalTopK, λ)
+返回 finalTopK
 ```
 
-`FilterExpressionBuilder` 把 KB 过滤翻译为 `WHERE metadata @> '{"knowledge_base_id":"..."}'`，下推到 SQL，让 HNSW 索引能用上 metadata GIN-style 索引做 pre-filter。
+关键配置（`application.yml` → `app.rerank.*`）：
+
+| 配置 | 默认 | 作用 |
+|---|---|---|
+| `expand-factor` | 2 | recall 多取 N 倍交给 rerank |
+| `score-threshold` | -1.0 | 低于阈值的候选丢弃；-1.0 等价禁用 |
+| `mmr-enabled` | true | 关闭则跳过 MMR，仅保留 rerank 顺序 |
+| `mmr-lambda` | 0.7 | λ=1 纯相关性、λ=0 纯多样性；自动 clamp 到 `[0,1]` |
+
+阈值过滤把所有候选都丢光时返回空 list — 让 LLM 走 `RAG_SYSTEM_PROMPT` 的"无法回答"分支，而不是用低相关 context 编造回答。
+
+`MmrDeduplicator` 用 char-trigram Jaccard 估算 chunk 对相似度（无 embedding 往返成本）；ranked 列表本身的位置作为 relevance 的 fallback（无 rerank_score 时）。
+
+KB 过滤仍通过 `FilterExpressionBuilder` 下推为 `WHERE metadata @> '{"knowledge_base_id":"..."}'`，让 HNSW + metadata 索引能 pre-filter。
 
 ### 4.2 topK 防御
 
@@ -473,10 +490,11 @@ public class ApiKeyFilter {
 ### 7.2 StartupValidator
 
 `@PostConstruct` 在 `prod`/`production` profile 下校验：
-- `spring.ai.openai.api-key` 不在 `{"", "dummy", "test", "changeme"}` 中
+- `spring.ai.openai.api-key` 不在 `{"", "dummy", "test", "changeme"}` 中（trim + lowercase 后比对）
 - `spring.datasource.password` 不是 dev 默认 `rag`
 
 任意一条不满足 → `IllegalStateException` → Spring 启动失败。
+非 prod profile 一律跳过；`StartupValidatorTest`（7 case，含 `@ParameterizedTest` 多种占位 key + production 别名 + 混合 profile）锁定行为。
 
 ### 7.3 上传安全
 
@@ -680,19 +698,23 @@ springdoc:
 | `DocumentParserFactoryTest` | unit | 文件类型 → reader 选择；URL 分支已删（SSRF 防御） |
 | `DocumentUploadServiceTest` | unit | 校验路径，事件发布，empty/unsupported 场景 |
 | `ChatServiceTest` | unit | `buildContext`（package-private 暴露给测试） |
-| `KnowledgeBaseServiceTest` | unit | CRUD、ResourceNotFound 抛出 |
+| `KnowledgeBaseServiceTest` | unit | CRUD、ResourceNotFound、delete 路径（磁盘清理 + 缺失 KB 短路） |
 | `FixedSizeBatchingStrategyTest` | unit | 分批边界（整除、余数、空、null、负数、顺序） |
+| `MmrDeduplicatorTest` | unit | λ=0 / λ=1 / 中间值、近重复丢弃、clamp、fallback relevance |
+| `RetrievalServiceTest` | unit | recall→rerank→threshold→MMR 全链路；expand-factor、阈值清空、缺 rerank_score |
+| `ChatSseEventsTest` | unit | token/done/error 三类帧；流首异常；空流 |
+| `StartupValidatorTest` | unit | prod profile 占位 key、dev 默认密码、非 prod 跳过、production 别名 |
 | `IngestionConsumerIntegrationTest` | integration | `@SpringBootTest` + 本地 PG/Kafka + WireMock；happy + failure path |
 
-总数 23 个，CI 时间 ~10s（不含集成测试 5s 额外）。
+总数 ~40 个（参数化展开后更多），CI 时间 ~12s（不含集成测试 5s 额外）。
 
 ### 11.2 前端
 
 | 测试 | 类型 | 范围 |
 |---|---|---|
-| `api.client.test.ts` | unit (Vitest) | request 200/204/4xx；streamRequest 单 chunk / 跨 chunk / [DONE] |
+| `api.client.test.ts` | unit (Vitest) | request 200/204/4xx；streamRequest 单 chunk / 跨 chunk / [DONE]；event 类型路由（token / done / error）；空 token 保留；CRLF；TCP 碎片不挂起 |
 
-总数 7 个。
+总数 12 个。
 
 ### 11.3 集成测试基础设施限制
 
