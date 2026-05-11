@@ -13,6 +13,7 @@ import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -71,6 +72,38 @@ class KnowledgeBaseServiceTest {
         assertThatThrownBy(() -> service.getById(id))
             .isInstanceOf(ResourceNotFoundException.class)
             .hasMessageContaining(id.toString());
+    }
+
+    @Test
+    void delete_removesChunksKbAndEveryUploadedFile() {
+        UUID kbId = savedKb.getId();
+        when(repository.existsById(kbId)).thenReturn(true);
+        when(documentRepository.findFilePathsByKnowledgeBaseId(kbId))
+            .thenReturn(List.of("/data/uploads/" + kbId + "/a.pdf",
+                                "/data/uploads/" + kbId + "/b.txt"));
+
+        service.delete(kbId);
+
+        // Chunks first (vector store), then KB row (FK cascade clears documents),
+        // then disk files — order doesn't change correctness, but at minimum every
+        // uploaded file must be deleted so we don't leak orphans.
+        verify(chunkQueryService).deleteByKnowledgeBase(kbId);
+        verify(repository).deleteById(kbId);
+        verify(storageService).delete("/data/uploads/" + kbId + "/a.pdf");
+        verify(storageService).delete("/data/uploads/" + kbId + "/b.txt");
+        verifyNoMoreInteractions(storageService);
+    }
+
+    @Test
+    void delete_throwsAndTouchesNothing_whenKbMissing() {
+        UUID id = UUID.randomUUID();
+        when(repository.existsById(id)).thenReturn(false);
+
+        assertThatThrownBy(() -> service.delete(id))
+            .isInstanceOf(ResourceNotFoundException.class);
+
+        verifyNoInteractions(chunkQueryService, storageService);
+        verify(repository, never()).deleteById(any());
     }
 
     @Test
