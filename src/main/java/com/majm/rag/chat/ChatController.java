@@ -11,6 +11,7 @@ import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
+import org.springframework.http.codec.ServerSentEvent;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.servlet.support.ServletUriComponentsBuilder;
 import reactor.core.publisher.Flux;
@@ -26,10 +27,10 @@ public class ChatController {
 
     private final ChatService chatService;
 
-    @Operation(summary = "Single-turn RAG chat (SSE stream of answer tokens)")
+    @Operation(summary = "Single-turn RAG chat (SSE event stream: 'token' / 'done' / 'error')")
     @PostMapping(produces = MediaType.TEXT_EVENT_STREAM_VALUE)
-    public Flux<String> chat(@Valid @RequestBody ChatRequest request) {
-        return chatService.chat(request);
+    public Flux<ServerSentEvent<String>> chat(@Valid @RequestBody ChatRequest request) {
+        return ChatSseEvents.wrap(chatService.chat(request));
     }
 
     @Operation(summary = "Create a new conversation bound to a knowledge base")
@@ -44,11 +45,11 @@ public class ChatController {
         return ResponseEntity.created(location).body(ConversationResponse.from(conversation));
     }
 
-    @Operation(summary = "Send a message in an existing conversation (SSE stream of answer tokens)")
+    @Operation(summary = "Send a message in an existing conversation (SSE event stream: 'token' / 'done' / 'error')")
     @PostMapping(value = "/conversations/{id}/messages",
                  produces = MediaType.TEXT_EVENT_STREAM_VALUE)
-    public Flux<String> continueConversation(@PathVariable UUID id,
+    public Flux<ServerSentEvent<String>> continueConversation(@PathVariable UUID id,
             @Valid @RequestBody ConversationMessageRequest request) {
-        return chatService.continueConversation(id, request);
+        return ChatSseEvents.wrap(chatService.continueConversation(id, request));
     }
 }
