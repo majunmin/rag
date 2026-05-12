@@ -343,7 +343,50 @@ MMR 去冗余
 
 KB 过滤仍通过 `FilterExpressionBuilder` 下推为 `WHERE metadata @> '{"knowledge_base_id":"..."}'`，让 HNSW + metadata 索引能 pre-filter。
 
-### 4.2 topK 防御
+### 4.2 查询重写与扩展（`com.majm.rag.retrieval.rewrite`）
+
+在召回之前，`QueryRewriteService` 把用户原始 query 过一遍可配置的策略链。
+
+`RewriteResult` 三字段：
+
+| 字段 | 含义 |
+|---|---|
+| `originalQuery` | 用户真实意图（rerank 用它）；多轮 conversational 改写后会被替换 |
+| `embeddingQuery` | 真正送进 `vectorStore.similaritySearch` 的文本；HyDE 用假设性段落，其它策略 = `originalQuery` |
+| `expandedQueries` | 额外的查询变体（仅 Multi-Query 非空），触发 N 路召回 + RRF 融合 |
+
+**三种策略**（`com.majm.rag.retrieval.rewrite.*Rewriter`）：
+
+- **`ConversationalRewriter`** — 多轮指代消解。history 非空时一次 LLM 调用，把 `"那它有什么限制？"` + 上下文改写为 `"X 有什么限制？"`。history 为空 = 直接 passthrough，零 LLM 成本。
+- **`HydeRewriter`** — 让 LLM 生成 2-4 句"假设性答案段落"，用它做 embedding 召回（HyDE/Gao et al. 2022）；rerank 仍用原 query，避免假设性内容污染相关性评分。
+- **`MultiQueryRewriter`** — 让 LLM 输出 N 个改写问法（默认 N=3，配置范围 [2,8]），加上原 query 共 N+1 路召回，按 **RRF**（Reciprocal Rank Fusion）融合：`fused(d) = Σ_q 1 / (k + rank_q(d))`，k 默认 60。
+
+**编排（`QueryRewriteService`）**：
+
+- 配置 `app.query-rewrite.strategies=conversational,hyde`：先 conversational 改写出 standalone query，再把它送进 HyDE。两步链式合成，`merge()` 决定哪些字段被覆盖。
+- 单 LLM 调用 budget = `timeout-ms`（默认 3000ms，最低 500ms）。整链跑在 `CompletableFuture` 里，`.get(timeoutMs, MS)` 超时 → fail-soft 回落原 query。
+- 每个 `QueryRewriter` 内部也都 `try/catch` 包住 LLM 调用，自己先做一层 fail-soft，避免单点失败拖垮整链。
+- `enabled=false` 或 strategies 全部不识别 → 整体 passthrough；INFO 日志在启动时打印 active chain。
+
+**`RetrievalService` 改造**：
+
+- 新增 `search(kbId, query, topK, RewriteResult)` 重载；老 `search(kbId, query, topK)` 仍存在（KB 直查端点用，不走 LLM 改写）。
+- 没有 expansion 时走 `singleRecall(embeddingQuery)`；有 expansion 时 `multiQueryRecall` 跑 N+1 次 `similaritySearch`，按 RRF 融合后取 `recallSize` 个候选交给 rerank。
+- 去重 key：`Document.getId()` 优先；没 id 时用 `text.hashCode():length` 作 fallback。
+
+**配置（`app.query-rewrite.*`）**：
+
+| 配置 | 默认 | 作用 |
+|---|---|---|
+| `enabled` | true | 总开关；false 立即 passthrough |
+| `strategies` | `conversational,hyde` | 逗号分隔的策略链，按顺序应用 |
+| `timeout-ms` | 3000（min 500） | 整链 wall-clock 预算 |
+| `multi-query-count` | 3（clamp [2,8]） | Multi-Query 改写条数 |
+| `rrf-k` | 60 | RRF 融合常数 |
+
+测试：`QueryRewriteServiceTest`（10 case，含 timeout / 异常 / 未知策略 / 空 history）+ 三个 Rewriter 各自的单元测试（共 19 case）；`RetrievalServiceTest` 新增 RRF 融合 + HyDE 双 query 验证。
+
+### 4.3 topK 防御
 
 三层夹紧：
 1. DTO `@Min(1) @Max(50)`（Bean Validation）

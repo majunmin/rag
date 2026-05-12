@@ -461,6 +461,7 @@ pnpm dev                    # http://localhost:5173
 | API Key 鉴权 | 单租户共享 key，过滤器实现 | 真要多用户，换 OAuth2 / JWT |
 | 文件存储 | 本地磁盘；KB / Document 删除时已联动 `storageService.delete(filePath)` | 生产换 S3-compatible（OSS / MinIO） |
 | 检索后处理 | recall→cross-encoder rerank→`score-threshold` 过滤→MMR 去冗余 | rerank 策略调研见 `docs/research/2026-05-11-rerank-strategies.md` |
+| 查询重写 | 三策略链：Conversational（多轮指代消解）→ HyDE（假设性文档）/ Multi-Query（多查询 + RRF 融合）；fail-soft 回落原 query | 默认 `conversational,hyde`；可切 `conversational,multi-query` 看效果 |
 | 集成测试 | 用本地 docker-compose 栈而非 Testcontainers | 等 Docker Engine 29 + docker-java 兼容性问题修复后切回 |
 | LLM 调用观测 | 仅 Spring AI 默认 metrics | 接 OpenTelemetry，导出到 Tempo/Jaeger |
 
@@ -470,7 +471,7 @@ pnpm dev                    # http://localhost:5173
 
 | 类别 | 数量 | 说明 |
 |---|---|---|
-| 单元测试 | 后端 ~40 / 前端 12 | DocumentParserFactory, DocumentUploadService, ChatService, KnowledgeBaseService（含 delete 路径）, FixedSizeBatchingStrategy, MmrDeduplicator, RetrievalService, ChatSseEvents, StartupValidator, API client (Vitest) |
+| 单元测试 | 后端 ~70 / 前端 12 | DocumentParserFactory, DocumentUploadService, ChatService, KnowledgeBaseService（含 delete 路径）, FixedSizeBatchingStrategy, MmrDeduplicator, RetrievalService（含 RRF 融合）, ChatSseEvents, StartupValidator, QueryRewriteService + 3 个 Rewriter, API client (Vitest) |
 | 集成测试 | 2 | IngestionConsumer end-to-end（PG + Kafka + WireMock 拦截 LLM） |
 | 健康端点 | 1 | `/api/actuator/health{,/liveness,/readiness}` |
 | 已知遗漏 | — | ApiKeyFilter on/off 行为、ChatController 端到端 SSE |
