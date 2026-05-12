@@ -1,6 +1,8 @@
 package com.majm.rag.chat;
 
 import com.majm.rag.retrieval.RetrievalService;
+import com.majm.rag.retrieval.rewrite.QueryRewriteService;
+import com.majm.rag.retrieval.rewrite.RewriteResult;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
@@ -24,6 +26,8 @@ class ChatServiceTest {
     @Mock private RetrievalService retrievalService;
     @Mock private ConversationRepository conversationRepository;
     @Mock private ChatClient chatClient;
+    @Mock private ConversationPersistenceService persistenceService;
+    @Mock private QueryRewriteService queryRewriteService;
 
     @InjectMocks
     private ChatService chatService;
@@ -34,10 +38,12 @@ class ChatServiceTest {
         Document doc1 = new Document("chunk one", Map.of());
         Document doc2 = new Document("chunk two", Map.of());
 
-        when(retrievalService.search(any(), any(), anyInt()))
+        when(queryRewriteService.rewrite(any(), any()))
+            .thenAnswer(inv -> RewriteResult.passthrough(inv.getArgument(0)));
+        when(retrievalService.search(any(), any(), anyInt(), any(RewriteResult.class)))
             .thenReturn(List.of(doc1, doc2));
 
-        String context = chatService.buildContext(kbId, "test query", 5);
+        String context = chatService.buildContext(kbId, "test query", 5, List.of());
 
         assertThat(context).contains("chunk one");
         assertThat(context).contains("chunk two");

@@ -6,6 +6,8 @@ import com.majm.rag.common.exception.ResourceNotFoundException;
 import com.majm.rag.chat.dto.ConversationMessageRequest;
 import com.majm.rag.chat.dto.CreateConversationRequest;
 import com.majm.rag.retrieval.RetrievalService;
+import com.majm.rag.retrieval.rewrite.QueryRewriteService;
+import com.majm.rag.retrieval.rewrite.RewriteResult;
 import lombok.RequiredArgsConstructor;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.chat.messages.AssistantMessage;
@@ -44,6 +46,7 @@ public class ChatService {
     private final ConversationRepository conversationRepository;
     private final ChatClient chatClient;
     private final ConversationPersistenceService persistenceService;
+    private final QueryRewriteService queryRewriteService;
 
     @Value("${app.chat.max-history-messages:20}")
     private int maxHistoryMessages;
@@ -59,15 +62,18 @@ public class ChatService {
         return new ArrayList<>(messages.subList(messages.size() - maxSize, messages.size()));
     }
 
-    String buildContext(UUID knowledgeBaseId, String query, int topK) {
-        List<Document> chunks = retrievalService.search(knowledgeBaseId, query, topK);
+    String buildContext(UUID knowledgeBaseId, String query, int topK,
+                        List<Map<String, String>> history) {
+        RewriteResult rewrite = queryRewriteService.rewrite(query, history);
+        List<Document> chunks = retrievalService.search(knowledgeBaseId, query, topK, rewrite);
         return chunks.stream()
             .map(Document::getText)
             .collect(Collectors.joining("\n\n---\n\n"));
     }
 
     public Flux<String> chat(ChatRequest request) {
-        String context = buildContext(request.knowledgeBaseId(), request.question(), request.topK());
+        String context = buildContext(
+            request.knowledgeBaseId(), request.question(), request.topK(), List.of());
         return chatClient.prompt()
             .system(s -> s.text(RAG_SYSTEM_PROMPT).param("context", context))
             .user(request.question())
@@ -86,9 +92,14 @@ public class ChatService {
         Conversation conv = conversationRepository.findById(conversationId)
             .orElseThrow(() -> ResourceNotFoundException.of("Conversation", conversationId));
 
-        String context = buildContext(conv.getKnowledgeBaseId(), request.question(), request.topK());
+        // Rewrite using the PRE-question history (so conversational rewriter
+        // can resolve coreference against prior turns without seeing the
+        // current question echoed in history).
+        List<Map<String, String>> priorHistory = trimHistory(conv.getMessages(), maxHistoryMessages);
+        String context = buildContext(
+            conv.getKnowledgeBaseId(), request.question(), request.topK(), priorHistory);
 
-        List<Map<String, String>> history = new ArrayList<>(conv.getMessages());
+        List<Map<String, String>> history = new ArrayList<>(priorHistory);
         history.add(Map.of(MSG_ROLE, ROLE_USER, MSG_CONTENT, request.question()));
         history = trimHistory(history, maxHistoryMessages);
         conv.setMessages(history);

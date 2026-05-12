@@ -116,6 +116,23 @@ app:
     # pure diversity. 0.7 is a reasonable default.
     mmr-enabled: ${APP_RERANK_MMR_ENABLED:true}
     mmr-lambda: ${APP_RERANK_MMR_LAMBDA:0.7}
+  query-rewrite:
+    # Rewrites the user's question before retrieval. Three strategies compose
+    # (left-to-right): "conversational" resolves coreference in multi-turn
+    # follow-ups; "hyde" embeds an LLM-generated hypothetical answer; "multi-query"
+    # fans out to N paraphrases and fuses with Reciprocal Rank Fusion.
+    enabled: ${APP_QUERY_REWRITE_ENABLED:true}
+    strategies: ${APP_QUERY_REWRITE_STRATEGIES:conversational,hyde}
+    # Whole-chain wall clock budget. Floored to 500ms; on timeout we fall back
+    # to the user's literal question (no LLM rewrite). RAG should degrade
+    # quality, never crash, when the rewrite LLM is slow.
+    timeout-ms: ${APP_QUERY_REWRITE_TIMEOUT_MS:3000}
+    # Number of paraphrases requested when "multi-query" is active. Each
+    # paraphrase costs one extra vector store recall; capped at 8.
+    multi-query-count: ${APP_QUERY_REWRITE_MULTI_COUNT:3}
+    # RRF k constant for fusing multi-query recall results. Larger k = flatter
+    # weighting of top ranks; 60 is the standard from the RRF paper.
+    rrf-k: ${APP_QUERY_REWRITE_RRF_K:60}
 
 server:
   port: ${SERVER_PORT:8080}

@@ -1,5 +1,6 @@
 package com.majm.rag.retrieval;
 
+import com.majm.rag.retrieval.rewrite.RewriteResult;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.collections4.CollectionUtils;
@@ -11,7 +12,10 @@ import org.springframework.ai.vectorstore.filter.FilterExpressionBuilder;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 /**
@@ -65,24 +69,46 @@ public class RetrievalService {
     @Value("${app.rerank.mmr-enabled:true}")
     private boolean mmrEnabled;
 
+    /** RRF constant used to fuse Multi-Query recall results. Larger = flatter weighting of high ranks. */
+    @Value("${app.query-rewrite.rrf-k:60}")
+    private int rrfK;
+
+    /** Direct search path — no rewrite, no expansion. Used by the KB search endpoint. */
     public List<Document> search(UUID knowledgeBaseId, String query, int topK) {
+        // Validate up front so the legacy arity keeps emitting "query is required"
+        // for blanks instead of leaking RewriteResult's internal constraint message.
+        if (StringUtils.isBlank(query)) {
+            throw new IllegalArgumentException("query is required");
+        }
+        return search(knowledgeBaseId, query, topK, RewriteResult.passthrough(query));
+    }
+
+    /**
+     * Search with a pre-computed {@link RewriteResult}. Used by ChatService.
+     *
+     * <p>{@code rewrite.embeddingQuery()} drives vector recall.
+     * {@code rewrite.originalQuery()} drives rerank (so the cross-encoder sees
+     * the real intent, not a HyDE pseudo-doc).
+     * {@code rewrite.expandedQueries()}, when non-empty, triggers Multi-Query
+     * recall + RRF fusion before rerank.
+     */
+    public List<Document> search(UUID knowledgeBaseId, String query, int topK, RewriteResult rewrite) {
         if (knowledgeBaseId == null) {
             throw new IllegalArgumentException("knowledgeBaseId is required");
         }
         if (StringUtils.isBlank(query)) {
             throw new IllegalArgumentException("query is required");
         }
+        if (rewrite == null) {
+            rewrite = RewriteResult.passthrough(query);
+        }
+
         int finalTopK = clamp(topK, 1, RetrievalLimits.MAX_TOP_K);
         int recallSize = clamp(defaultTopKRecall, finalTopK, RetrievalLimits.MAX_TOP_K_RECALL);
 
-        FilterExpressionBuilder filter = new FilterExpressionBuilder();
-        List<Document> candidates = vectorStore.similaritySearch(
-            SearchRequest.builder()
-                .query(query)
-                .topK(recallSize)
-                .filterExpression(filter.eq(KNOWLEDGE_BASE_ID_FILTER, knowledgeBaseId.toString()).build())
-                .build()
-        );
+        List<Document> candidates = rewrite.hasExpansion()
+            ? multiQueryRecall(knowledgeBaseId, rewrite, recallSize)
+            : singleRecall(knowledgeBaseId, rewrite.embeddingQuery(), recallSize);
 
         if (CollectionUtils.isEmpty(candidates)) {
             return List.of();
@@ -91,7 +117,7 @@ public class RetrievalService {
         // Let rerank return a wider pool so MMR has choices to make.
         int rerankKeep = clamp(finalTopK * Math.max(1, rerankExpandFactor),
             finalTopK, Math.min(recallSize, RetrievalLimits.MAX_TOP_K_RECALL));
-        List<Document> reranked = rerankService.rerank(query, candidates, rerankKeep);
+        List<Document> reranked = rerankService.rerank(rewrite.originalQuery(), candidates, rerankKeep);
 
         List<Document> afterThreshold = applyThreshold(reranked);
         if (afterThreshold.isEmpty()) {
@@ -106,6 +132,74 @@ public class RetrievalService {
                 : List.copyOf(afterThreshold.subList(0, finalTopK));
         }
         return MmrDeduplicator.apply(afterThreshold, finalTopK, mmrLambda);
+    }
+
+    private List<Document> singleRecall(UUID knowledgeBaseId, String embeddingQuery, int recallSize) {
+        FilterExpressionBuilder filter = new FilterExpressionBuilder();
+        return vectorStore.similaritySearch(
+            SearchRequest.builder()
+                .query(embeddingQuery)
+                .topK(recallSize)
+                .filterExpression(filter.eq(KNOWLEDGE_BASE_ID_FILTER, knowledgeBaseId.toString()).build())
+                .build()
+        );
+    }
+
+    /**
+     * Run one recall per query (embedding + each expansion) and fuse the results
+     * with Reciprocal Rank Fusion:
+     *
+     * <pre>
+     *   fused(d) = sum_{q in queries} 1 / (k + rank_q(d))
+     * </pre>
+     *
+     * <p>Each query gets the same {@code recallSize} budget. The fused candidate
+     * list is capped at {@code recallSize} too — rerank should see roughly the
+     * same volume as a single-query search, just diversified across phrasings.
+     */
+    private List<Document> multiQueryRecall(UUID knowledgeBaseId, RewriteResult rewrite, int recallSize) {
+        List<String> queries = new ArrayList<>();
+        queries.add(rewrite.embeddingQuery());
+        queries.addAll(rewrite.expandedQueries());
+
+        // Use Document.getId() when available, else hash on text for de-dup across recalls.
+        Map<String, Double> scores = new LinkedHashMap<>();
+        Map<String, Document> byKey = new LinkedHashMap<>();
+        int hits = 0;
+
+        for (String q : queries) {
+            if (StringUtils.isBlank(q)) continue;
+            List<Document> recall = singleRecall(knowledgeBaseId, q, recallSize);
+            if (CollectionUtils.isEmpty(recall)) continue;
+            hits++;
+            for (int rank = 0; rank < recall.size(); rank++) {
+                Document d = recall.get(rank);
+                String key = dedupKey(d);
+                byKey.putIfAbsent(key, d);
+                // RRF: rank is 0-based; the standard formula uses 1-based, so we add 1.
+                scores.merge(key, 1.0 / (rrfK + rank + 1), Double::sum);
+            }
+        }
+        if (scores.isEmpty()) {
+            log.debug("multi-query recall: all {} queries returned 0 docs", queries.size());
+            return List.of();
+        }
+        log.debug("multi-query recall: {} queries hit, {} unique docs fused", hits, scores.size());
+
+        return scores.entrySet().stream()
+            .sorted(Map.Entry.<String, Double>comparingByValue().reversed())
+            .limit(recallSize)
+            .map(e -> byKey.get(e.getKey()))
+            .toList();
+    }
+
+    private static String dedupKey(Document d) {
+        if (d == null) return "null";
+        // Prefer explicit id; fall back to hashing the text (good enough — same chunk
+        // will produce identical text across recall calls).
+        if (StringUtils.isNotBlank(d.getId())) return d.getId();
+        String text = StringUtils.defaultString(d.getText());
+        return "h:" + text.hashCode() + ":" + text.length();
     }
 
     private List<Document> applyThreshold(List<Document> ranked) {
