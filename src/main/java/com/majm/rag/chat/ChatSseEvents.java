@@ -15,6 +15,7 @@ import java.util.UUID;
  *
  * <p>Frames emitted:
  * <ul>
+ *   <li>{@code event: context, data: <SearchResultItem JSON array>} — once, before tokens</li>
  *   <li>{@code event: token, data: <text-token>} — one per upstream onNext</li>
  *   <li>{@code event: done,  data: ""}            — terminal success</li>
  *   <li>{@code event: error, data: {ErrorResponse JSON}} — on upstream failure;
@@ -33,17 +34,31 @@ final class ChatSseEvents {
 
     private ChatSseEvents() {}
 
-    static Flux<ServerSentEvent<String>> wrap(Flux<String> tokens) {
-        return tokens
+    static Flux<ServerSentEvent<String>> wrap(ChatStream stream) {
+        Flux<ServerSentEvent<String>> context = Flux.defer(() -> Flux.just(
+            ServerSentEvent.<String>builder()
+                .event("context")
+                .data(serializeContext(stream))
+                .build()));
+        Flux<ServerSentEvent<String>> tokens = stream.tokens()
             .map(token -> ServerSentEvent.<String>builder()
                 .event("token")
                 .data(token)
-                .build())
-            .concatWith(Flux.just(ServerSentEvent.<String>builder()
+                .build());
+        Flux<ServerSentEvent<String>> done = Flux.just(ServerSentEvent.<String>builder()
                 .event("done")
                 .data("")
-                .build()))
+                .build());
+        return Flux.concat(context, tokens, done)
             .onErrorResume(ChatSseEvents::errorFrame);
+    }
+
+    private static String serializeContext(ChatStream stream) {
+        try {
+            return MAPPER.writeValueAsString(stream.context());
+        } catch (JsonProcessingException e) {
+            throw new IllegalStateException("Could not serialize retrieval context", e);
+        }
     }
 
     private static Flux<ServerSentEvent<String>> errorFrame(Throwable t) {

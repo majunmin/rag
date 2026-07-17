@@ -2,12 +2,14 @@ package com.majm.rag.chat;
 
 import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.majm.rag.knowledge.dto.SearchResultItem;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.codec.ServerSentEvent;
 import reactor.core.publisher.Flux;
 import reactor.test.StepVerifier;
 
 import java.util.List;
+import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -18,10 +20,17 @@ class ChatSseEventsTest {
         .configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
 
     @Test
-    void emitsTokenEventsThenDone_onNormalCompletion() {
-        Flux<ServerSentEvent<String>> out = ChatSseEvents.wrap(Flux.just("hello", " ", "world"));
+    void emitsContextBeforeTokenEventsThenDone_onNormalCompletion() {
+        ChatStream stream = new ChatStream(
+            List.of(new SearchResultItem("chunk text", Map.of("chunk_index", 2))),
+            Flux.just("hello", " ", "world"));
+        Flux<ServerSentEvent<String>> out = ChatSseEvents.wrap(stream);
 
         StepVerifier.create(out)
+            .assertNext(e -> {
+                assertThat(e.event()).isEqualTo("context");
+                assertThat(e.data()).contains("chunk text").contains("chunk_index");
+            })
             .assertNext(e -> {
                 assertThat(e.event()).isEqualTo("token");
                 assertThat(e.data()).isEqualTo("hello");
@@ -42,15 +51,16 @@ class ChatSseEventsTest {
             Flux.just("partial"),
             Flux.error(new RuntimeException("LLM timed out")));
 
-        List<ServerSentEvent<String>> events = ChatSseEvents.wrap(faulty)
+        List<ServerSentEvent<String>> events = ChatSseEvents.wrap(new ChatStream(List.of(), faulty))
             .collectList()
             .block();
 
-        assertThat(events).hasSize(2);
-        assertThat(events.get(0).event()).isEqualTo("token");
-        assertThat(events.get(0).data()).isEqualTo("partial");
+        assertThat(events).hasSize(3);
+        assertThat(events.get(0).event()).isEqualTo("context");
+        assertThat(events.get(1).event()).isEqualTo("token");
+        assertThat(events.get(1).data()).isEqualTo("partial");
 
-        ServerSentEvent<String> errEvt = events.get(1);
+        ServerSentEvent<String> errEvt = events.get(2);
         assertThat(errEvt.event()).isEqualTo("error");
         assertThat(errEvt.data()).isNotBlank();
 
@@ -65,7 +75,8 @@ class ChatSseEventsTest {
     void errorAtTheVeryStart_stillEmitsErrorEvent() {
         Flux<String> immediatelyFailing = Flux.error(new IllegalStateException("upstream down"));
 
-        StepVerifier.create(ChatSseEvents.wrap(immediatelyFailing))
+        StepVerifier.create(ChatSseEvents.wrap(new ChatStream(List.of(), immediatelyFailing)))
+            .assertNext(e -> assertThat(e.event()).isEqualTo("context"))
             .assertNext(e -> {
                 assertThat(e.event()).isEqualTo("error");
                 ParsedError parsed = parse(e.data());
@@ -76,7 +87,11 @@ class ChatSseEventsTest {
 
     @Test
     void emptyUpstream_emitsOnlyDone() {
-        StepVerifier.create(ChatSseEvents.wrap(Flux.empty()))
+        StepVerifier.create(ChatSseEvents.wrap(new ChatStream(List.of(), Flux.empty())))
+            .assertNext(e -> {
+                assertThat(e.event()).isEqualTo("context");
+                assertThat(e.data()).isEqualTo("[]");
+            })
             .assertNext(e -> assertThat(e.event()).isEqualTo("done"))
             .verifyComplete();
     }

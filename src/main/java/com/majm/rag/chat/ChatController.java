@@ -27,7 +27,7 @@ public class ChatController {
 
     private final ChatService chatService;
 
-    @Operation(summary = "Single-turn RAG chat (SSE event stream: 'token' / 'done' / 'error')")
+    @Operation(summary = "Single-turn RAG chat (SSE events: 'context' / 'token' / 'done' / 'error')")
     @PostMapping(produces = MediaType.TEXT_EVENT_STREAM_VALUE)
     public Flux<ServerSentEvent<String>> chat(@Valid @RequestBody ChatRequest request) {
         return ChatSseEvents.wrap(chatService.chat(request));
@@ -45,7 +45,7 @@ public class ChatController {
         return ResponseEntity.created(location).body(ConversationResponse.from(conversation));
     }
 
-    @Operation(summary = "Send a message in an existing conversation (SSE event stream: 'token' / 'done' / 'error')")
+    @Operation(summary = "Send a message in an existing conversation (SSE events: 'context' / 'token' / 'done' / 'error')")
     @PostMapping(value = "/conversations/{id}/messages",
                  produces = MediaType.TEXT_EVENT_STREAM_VALUE)
     public Flux<ServerSentEvent<String>> continueConversation(@PathVariable UUID id,
