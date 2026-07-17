@@ -11,7 +11,6 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
-import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.mock.web.MockMultipartFile;
 
 import java.util.UUID;
@@ -27,13 +26,13 @@ class DocumentUploadServiceTest {
     @Mock private KnowledgeBaseService kbService;
     @Mock private DocumentRepository documentRepository;
     @Mock private StorageService storageService;
-    @Mock private ApplicationEventPublisher eventPublisher;
+    @Mock private IngestionOutboxRepository outboxRepository;
 
     @InjectMocks
     private DocumentUploadService uploadService;
 
     @Test
-    void upload_shouldCreateDocumentAndPublishEvent() {
+    void upload_shouldCreateDocumentAndEnqueueOutboxEvent() {
         UUID kbId = UUID.randomUUID();
         KnowledgeBase kb = new KnowledgeBase();
         kb.setId(kbId);
@@ -53,7 +52,7 @@ class DocumentUploadServiceTest {
         UploadDocumentResponse response = uploadService.upload(kbId, file);
 
         assertThat(response.status()).isEqualTo("PENDING");
-        verify(eventPublisher).publishEvent(any(IngestionRequestedEvent.class));
+        verify(outboxRepository).enqueue(savedDoc.getId(), kbId);
     }
 
     @Test
