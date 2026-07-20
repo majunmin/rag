@@ -34,7 +34,7 @@ public class DocumentService {
         return documentRepository.findByKnowledgeBaseId(kbId, pageable)
             .map(d -> new DocumentListItem(
                 d.getId(), d.getName(), d.getFileType(),
-                d.getStatus().name(), d.getChunkCount(), d.getCreatedAt()));
+                d.getStatus().name(), d.getChunkCount(), d.getCreatedAt(), d.getErrorMessage()));
     }
 
     @Transactional(readOnly = true)
@@ -77,5 +77,5 @@ public class DocumentService {
     }
 
     public record DocumentListItem(UUID id, String name, String fileType, String status,
-                                    int chunkCount, LocalDateTime createdAt) {}
+                                    int chunkCount, LocalDateTime createdAt, String errorMessage) {}
 }

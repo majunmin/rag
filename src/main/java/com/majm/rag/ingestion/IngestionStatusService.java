@@ -7,6 +7,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.Optional;
 import java.util.UUID;
 
 @Service
@@ -16,11 +17,14 @@ public class IngestionStatusService {
     private final DocumentRepository documentRepository;
 
     @Transactional
-    public Document markProcessing(UUID documentId) {
+    public Optional<Document> markProcessing(UUID documentId) {
         Document doc = documentRepository.findById(documentId)
             .orElseThrow(() -> new IllegalStateException("Document not found: " + documentId));
+        if (doc.getStatus() == DocumentStatus.DONE) {
+            return Optional.empty();
+        }
         doc.setStatus(DocumentStatus.PROCESSING);
-        return doc;
+        return Optional.of(doc);
     }
 
     @Transactional

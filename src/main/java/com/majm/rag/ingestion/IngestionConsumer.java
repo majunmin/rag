@@ -1,6 +1,7 @@
 package com.majm.rag.ingestion;
 
 import com.majm.rag.ingestion.dto.IngestionMessage;
+import com.majm.rag.knowledge.ChunkQueryService;
 import com.majm.rag.knowledge.KnowledgeBaseService;
 import com.majm.rag.knowledge.domain.Document;
 import com.majm.rag.knowledge.domain.KnowledgeBase;
@@ -11,8 +12,12 @@ import org.springframework.ai.vectorstore.VectorStore;
 import org.springframework.kafka.annotation.KafkaListener;
 import org.springframework.stereotype.Component;
 
+import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 
 @Component
 @RequiredArgsConstructor
@@ -23,13 +28,19 @@ public class IngestionConsumer {
     private final IngestionStatusService statusService;
     private final DocumentParserFactory parserFactory;
     private final VectorStore vectorStore;
+    private final ChunkQueryService chunkQueryService;
 
     @KafkaListener(topics = "${app.ingestion.topic:document.ingestion}",
                    groupId = "${spring.kafka.consumer.group-id:rag-ingestion}")
     public void consume(IngestionMessage message) {
         log.info("Ingesting document {}", message.documentId());
 
-        Document doc = statusService.markProcessing(message.documentId());
+        var processing = statusService.markProcessing(message.documentId());
+        if (processing.isEmpty()) {
+            log.info("Skipping duplicate ingestion message for completed document {}", message.documentId());
+            return;
+        }
+        Document doc = processing.get();
         KnowledgeBase kb = kbService.getById(message.knowledgeBaseId());
 
         try {
@@ -51,17 +62,24 @@ public class IngestionConsumer {
         // by KnowledgeBase.chunkSize / chunkOverlap. See OverlappingTokenTextSplitter.
         var splitter = new OverlappingTokenTextSplitter(kb.getChunkSize(), kb.getChunkOverlap());
         List<org.springframework.ai.document.Document> chunks = splitter.apply(rawDocs);
+        List<org.springframework.ai.document.Document> indexedChunks = new ArrayList<>(chunks.size());
 
         for (int i = 0; i < chunks.size(); i++) {
-            chunks.get(i).getMetadata().putAll(Map.of(
+            Map<String, Object> metadata = new HashMap<>(chunks.get(i).getMetadata());
+            metadata.putAll(Map.of(
                 "knowledge_base_id", kb.getId().toString(),
                 "document_id", doc.getId().toString(),
                 "document_name", doc.getName(),
                 "chunk_index", i
             ));
+            String chunkId = UUID.nameUUIDFromBytes(
+                (doc.getId() + ":" + i).getBytes(StandardCharsets.UTF_8)).toString();
+            indexedChunks.add(new org.springframework.ai.document.Document(
+                chunkId, chunks.get(i).getText(), metadata));
         }
 
-        vectorStore.add(chunks);
-        return chunks.size();
+        chunkQueryService.deleteByDocument(doc.getId());
+        vectorStore.add(indexedChunks);
+        return indexedChunks.size();
     }
 }
