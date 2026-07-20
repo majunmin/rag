@@ -4,7 +4,7 @@
 
 **Goal:** Make chat citations exact, ingestion publication reliable and vector writes idempotent, and align the admin API-key/document contracts with the backend.
 
-**Architecture:** Chat returns a `ChatStream` that carries the retrieval results beside the token flux, and the SSE adapter serializes those exact results before tokens. Upload persists a PostgreSQL outbox row in the document transaction; a scheduled publisher delivers it at least once, while deterministic chunk IDs and replace-before-write make duplicate Kafka delivery harmless. The React client consumes typed SSE events and applies one shared optional API-key header policy.
+**Architecture:** Chat returns a `ChatStream` that carries the retrieval results beside the token flux, and the SSE adapter serializes those exact results before tokens. Upload persists a PostgreSQL outbox row in the document transaction; a scheduled publisher delivers it at least once, while deterministic chunk IDs plus upsert-before-prune make duplicate Kafka delivery harmless without deleting the previous complete set on a failed retry. The React client consumes typed SSE events and applies one shared optional API-key header policy.
 
 **Tech Stack:** Java 21, Spring Boot 3.3, Spring AI 1.1.5, Spring Kafka, PostgreSQL/Flyway, JUnit 5/Mockito/Reactor Test, React 19, TypeScript 6, Vitest.
 
@@ -332,7 +332,8 @@ For a `DONE` document, make `markProcessing` return `Optional.empty()` and
 verify no parser/vector interactions. For work, capture the list passed to
 `vectorStore.add` and assert IDs equal
 `UUID.nameUUIDFromBytes((documentId + ":" + index).getBytes(UTF_8)).toString()`;
-verify `chunkQueryService.deleteByDocument(documentId)` occurs before add.
+verify `vectorStore.add` occurs before
+`chunkQueryService.deleteByDocumentFromIndex(documentId, chunkCount)`.
 
 Add a document-list assertion:
 

@@ -160,7 +160,8 @@ Flyway 启动时自动执行 `src/main/resources/db/migration/V*.sql`。
 上传事务同时写入 `document` 与 `ingestion_outbox`。后台发布器使用
 `FOR UPDATE SKIP LOCKED` 批量锁定待发布事件，收到 Kafka 确认后标记为
 `PUBLISHED`；失败时记录原因并指数退避重试。Kafka 至少一次投递产生的重复
-消息由消费端幂等处理：已完成文档直接跳过，重试时使用确定性 chunk ID 重建向量。
+消息由消费端幂等处理：已完成文档直接跳过，重试时用确定性 chunk ID 先完成
+upsert，再裁剪已不存在的尾部 chunk，失败时保留上一份完整向量集。
 
 ---
 

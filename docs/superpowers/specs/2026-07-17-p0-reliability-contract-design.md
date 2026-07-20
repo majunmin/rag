@@ -98,10 +98,11 @@ therefore must be idempotent.
 Migration `V6` removes any existing duplicate `(document_id, chunk_index)` rows
 and adds a unique expression index for that pair.
 
-Before writing chunks, the consumer deletes prior vectors for the document. It
-assigns every chunk a deterministic UUID derived from
-`documentId + ':' + chunkIndex`. A retry therefore replaces the document's
-vector set instead of accumulating duplicates.
+The consumer assigns every chunk a deterministic UUID derived from
+`documentId + ':' + chunkIndex`. It upserts the complete new set first and only
+then deletes trailing old chunks whose index is outside the new set. A failed
+embedding attempt therefore preserves the previous complete vector set, while
+a successful retry converges without accumulating duplicates.
 
 If the document is already `DONE`, `markProcessing` reports that no work is
 needed and the consumer acknowledges the duplicate Kafka message without
@@ -110,7 +111,9 @@ parsing or embedding again. Failed attempts still transition the document to
 
 Deleting a document or knowledge base continues to delete associated vectors
 and files. Its outbox row is removed through a foreign key with `ON DELETE
-CASCADE`, so an unpublished event cannot resurrect deleted data.
+CASCADE`, so an unpublished event cannot resurrect deleted data. If deletion
+races with an already-running consumer, final status persistence detects the
+missing document and compensates by deleting vectors written by that attempt.
 
 ### Configuration
 

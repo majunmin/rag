@@ -129,6 +129,7 @@ public class ChunkQueryService {
 
     public List<DocumentChunkResponse> listByDocument(UUID documentId);
     public int deleteByDocument(UUID documentId);
+    public int deleteByDocumentFromIndex(UUID documentId, int fromIndex);
     public int deleteByKnowledgeBase(UUID kbId);
 }
 ```
@@ -229,9 +230,15 @@ public class IngestionConsumer {
         KnowledgeBase kb = kbService.getById(msg.knowledgeBaseId());
         try {
             int chunkCount = ingest(doc, kb);                       // 无事务
-            statusService.markDone(doc.getId(), chunkCount);
+            if (!statusService.markDone(doc.getId(), chunkCount)) {
+                chunkQueryService.deleteByDocument(doc.getId());   // 删除竞态补偿
+                return;
+            }
         } catch (Exception e) {
-            statusService.markFailed(doc.getId(), e.getMessage());
+            if (!statusService.markFailed(doc.getId(), e.getMessage())) {
+                chunkQueryService.deleteByDocument(doc.getId());
+                return;
+            }
             throw e;                                                // 让 Kafka 重试 + DLT
         }
     }
@@ -245,8 +252,9 @@ public class IngestionConsumer {
             // 复制原 metadata，并以 UUID.nameUUIDFromBytes(docId + ":" + i)
             // 生成稳定 ID 后构造待写入 chunk。
         }
-        chunkQueryService.deleteByDocument(doc.getId());            // retry 先清旧向量
-        vectorStore.add(indexedChunks);                              // 含 FixedSizeBatchingStrategy
+        vectorStore.add(indexedChunks);                              // 稳定 ID upsert
+        chunkQueryService.deleteByDocumentFromIndex(                 // 成功后裁剪旧尾部
+            doc.getId(), indexedChunks.size());
         return chunks.size();
     }
 }
@@ -259,9 +267,9 @@ public class IngestionConsumer {
 public class IngestionStatusService {
     private final DocumentRepository documentRepository;
 
-    @Transactional public Optional<Document> markProcessing(UUID id) { ... } // DONE 返回 empty
-    @Transactional public void markDone(UUID id, int count) { ... doc.setStatus(DONE); doc.setChunkCount(count); doc.setErrorMessage(null); }
-    @Transactional public void markFailed(UUID id, String msg) { ... doc.setStatus(FAILED); doc.setErrorMessage(msg); }
+    @Transactional public Optional<Document> markProcessing(UUID id) { ... } // DONE 返回 empty；清除旧 errorMessage
+    @Transactional public boolean markDone(UUID id, int count) { ... }   // 已删除返回 false
+    @Transactional public boolean markFailed(UUID id, String msg) { ... } // DONE 不覆盖，已删除返回 false
 }
 ```
 
@@ -319,7 +327,7 @@ Outbox 仓储使用 JDBC，因此先 `saveAndFlush` 保证父记录 INSERT 已�
 Outbox 行；二者仍由同一 Spring 事务提交或回滚。
 发布失败保留 `PENDING`，记录 `attempt_count`、`next_attempt_at` 和 `last_error`，按
 2s 起步、最高 300s 的指数退避重试。发布语义为 at-least-once，消费端通过 DONE
-短路、确定性 chunk ID 和重建前删除保证重试幂等。
+短路、确定性 chunk ID、upsert 后裁剪和删除竞态补偿保证重试幂等。
 
 ---
 
@@ -769,7 +777,8 @@ springdoc:
 | `RetrievalServiceTest` | unit | recall→rerank→threshold→MMR 全链路；expand-factor、阈值清空、缺 rerank_score |
 | `ChatSseEventsTest` | unit | context/token/done/error 四类帧；流首异常；空流 |
 | `IngestionOutboxPublisherTest` | unit | 发布成功、失败记录与退避重试 |
-| `IngestionConsumerTest` | unit | DONE 幂等跳过、稳定 chunk ID、先删后写 |
+| `IngestionConsumerTest` | unit | DONE 幂等跳过、稳定 chunk ID、upsert 后裁剪、失败保留旧向量、删除竞态补偿 |
+| `IngestionStatusServiceTest` | unit | retry 清理旧错误、DONE 不被迟到失败覆盖、删除检测 |
 | `DocumentServiceTest` | unit | 文档列表返回持久化的摄入失败原因 |
 | `StartupValidatorTest` | unit | prod profile 占位 key、dev 默认密码、非 prod 跳过、production 别名 |
 | `IngestionConsumerIntegrationTest` | integration | `@SpringBootTest` + 本地 PG/Kafka + WireMock；happy + failure path |

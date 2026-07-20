@@ -51,6 +51,17 @@ public class ChunkQueryService {
             documentId.toString());
     }
 
+    public int deleteByDocumentFromIndex(UUID documentId, int fromIndex) {
+        if (documentId == null) {
+            throw new IllegalArgumentException("documentId is required");
+        }
+        return jdbcTemplate.update("""
+            DELETE FROM vector_store
+             WHERE metadata->>'document_id' = ?
+               AND (metadata->>'chunk_index')::int >= ?
+            """, documentId.toString(), Math.max(0, fromIndex));
+    }
+
     public int deleteByKnowledgeBase(UUID knowledgeBaseId) {
         if (knowledgeBaseId == null) {
             throw new IllegalArgumentException("knowledgeBaseId is required");

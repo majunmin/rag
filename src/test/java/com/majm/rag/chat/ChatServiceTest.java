@@ -3,7 +3,9 @@ package com.majm.rag.chat;
 import com.majm.rag.retrieval.RetrievalService;
 import com.majm.rag.retrieval.rewrite.QueryRewriteService;
 import com.majm.rag.retrieval.rewrite.RewriteResult;
+import com.majm.rag.chat.domain.Conversation;
 import com.majm.rag.chat.dto.ChatRequest;
+import com.majm.rag.chat.dto.ConversationMessageRequest;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -45,7 +47,6 @@ class ChatServiceTest {
     void setUpChatStream() {
         when(chatClient.prompt()).thenReturn(requestSpec);
         when(requestSpec.system(any(Consumer.class))).thenReturn(requestSpec);
-        when(requestSpec.user(anyString())).thenReturn(requestSpec);
         when(requestSpec.stream()).thenReturn(streamSpec);
         when(streamSpec.content()).thenReturn(Flux.just("answer"));
     }
@@ -58,6 +59,7 @@ class ChatServiceTest {
 
         when(queryRewriteService.rewrite(any(), any()))
             .thenAnswer(inv -> RewriteResult.passthrough(inv.getArgument(0)));
+        when(requestSpec.user(anyString())).thenReturn(requestSpec);
         when(retrievalService.search(any(), any(), anyInt(), any(RewriteResult.class)))
             .thenReturn(List.of(doc));
 
@@ -72,5 +74,33 @@ class ChatServiceTest {
         StepVerifier.create(stream.tokens())
             .expectNext("answer")
             .verifyComplete();
+    }
+
+    @Test
+    void continueConversation_shouldExposeTheExactRetrievedChunks() {
+        UUID conversationId = UUID.randomUUID();
+        UUID kbId = UUID.randomUUID();
+        Conversation conversation = new Conversation();
+        conversation.setId(conversationId);
+        conversation.setKnowledgeBaseId(kbId);
+        conversation.setMessages(List.of(Map.of("role", "user", "content", "earlier question")));
+        Document doc = new Document("chunk-id", "multi-turn chunk",
+            Map.of("document_name", "manual.md", "chunk_index", 4));
+
+        when(conversationRepository.findById(conversationId)).thenReturn(java.util.Optional.of(conversation));
+        when(conversationRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+        when(requestSpec.messages(any(List.class))).thenReturn(requestSpec);
+        when(queryRewriteService.rewrite(any(), any()))
+            .thenAnswer(inv -> RewriteResult.passthrough(inv.getArgument(0)));
+        when(retrievalService.search(any(), any(), anyInt(), any(RewriteResult.class)))
+            .thenReturn(List.of(doc));
+
+        ChatStream stream = chatService.continueConversation(
+            conversationId, new ConversationMessageRequest("follow up", 5));
+
+        assertThat(stream.context()).containsExactly(
+            new com.majm.rag.knowledge.dto.SearchResultItem(
+                "multi-turn chunk", Map.of("document_name", "manual.md", "chunk_index", 4)));
+        StepVerifier.create(stream.tokens()).expectNext("answer").verifyComplete();
     }
 }

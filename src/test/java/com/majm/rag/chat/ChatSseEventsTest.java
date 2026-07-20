@@ -2,6 +2,7 @@ package com.majm.rag.chat;
 
 import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.core.type.TypeReference;
 import com.majm.rag.knowledge.dto.SearchResultItem;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.codec.ServerSentEvent;
@@ -29,7 +30,8 @@ class ChatSseEventsTest {
         StepVerifier.create(out)
             .assertNext(e -> {
                 assertThat(e.event()).isEqualTo("context");
-                assertThat(e.data()).contains("chunk text").contains("chunk_index");
+                assertThat(parseContext(e.data())).containsExactly(
+                    new SearchResultItem("chunk text", Map.of("chunk_index", 2)));
             })
             .assertNext(e -> {
                 assertThat(e.event()).isEqualTo("token");
@@ -101,6 +103,14 @@ class ChatSseEventsTest {
             return mapper.readValue(json, ParsedError.class);
         } catch (Exception e) {
             throw new AssertionError("Bad JSON: " + json, e);
+        }
+    }
+
+    private List<SearchResultItem> parseContext(String json) {
+        try {
+            return mapper.readValue(json, new TypeReference<>() {});
+        } catch (Exception e) {
+            throw new AssertionError("Bad context JSON: " + json, e);
         }
     }
 

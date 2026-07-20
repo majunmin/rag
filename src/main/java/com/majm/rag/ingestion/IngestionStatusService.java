@@ -24,23 +24,35 @@ public class IngestionStatusService {
             return Optional.empty();
         }
         doc.setStatus(DocumentStatus.PROCESSING);
+        doc.setErrorMessage(null);
         return Optional.of(doc);
     }
 
     @Transactional
-    public void markDone(UUID documentId, int chunkCount) {
-        Document doc = documentRepository.findById(documentId)
-            .orElseThrow(() -> new IllegalStateException("Document not found: " + documentId));
+    public boolean markDone(UUID documentId, int chunkCount) {
+        Optional<Document> document = documentRepository.findById(documentId);
+        if (document.isEmpty()) {
+            return false;
+        }
+        Document doc = document.get();
         doc.setStatus(DocumentStatus.DONE);
         doc.setChunkCount(chunkCount);
         doc.setErrorMessage(null);
+        return true;
     }
 
     @Transactional
-    public void markFailed(UUID documentId, String errorMessage) {
-        Document doc = documentRepository.findById(documentId)
-            .orElseThrow(() -> new IllegalStateException("Document not found: " + documentId));
+    public boolean markFailed(UUID documentId, String errorMessage) {
+        Optional<Document> document = documentRepository.findById(documentId);
+        if (document.isEmpty()) {
+            return false;
+        }
+        Document doc = document.get();
+        if (doc.getStatus() == DocumentStatus.DONE) {
+            return true;
+        }
         doc.setStatus(DocumentStatus.FAILED);
         doc.setErrorMessage(errorMessage);
+        return true;
     }
 }

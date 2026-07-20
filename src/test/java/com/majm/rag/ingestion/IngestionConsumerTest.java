@@ -22,7 +22,11 @@ import java.util.Optional;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyList;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -45,7 +49,6 @@ class IngestionConsumerTest {
         UUID documentId = UUID.randomUUID();
         IngestionMessage message = new IngestionMessage(documentId, UUID.randomUUID());
         when(statusService.markProcessing(documentId)).thenReturn(Optional.empty());
-
         consumer.consume(message);
 
         verifyNoInteractions(kbService, parserFactory, vectorStore, chunkQueryService);
@@ -75,6 +78,7 @@ class IngestionConsumerTest {
             new org.springframework.ai.document.Document("alpha beta gamma", Map.of("source", "upload")));
 
         when(statusService.markProcessing(documentId)).thenReturn(Optional.of(stored));
+        when(statusService.markDone(documentId, 1)).thenReturn(true);
         when(kbService.getById(knowledgeBaseId)).thenReturn(kb);
         when(parserFactory.create("TXT", "/tmp/guide.txt")).thenReturn(reader);
 
@@ -95,9 +99,74 @@ class IngestionConsumerTest {
                 .containsEntry("chunk_index", 0);
         });
 
-        InOrder order = inOrder(chunkQueryService, vectorStore);
-        order.verify(chunkQueryService).deleteByDocument(documentId);
+        InOrder order = inOrder(vectorStore, chunkQueryService);
         order.verify(vectorStore).add(anyList());
+        order.verify(chunkQueryService).deleteByDocumentFromIndex(documentId, 1);
         verify(statusService).markDone(documentId, 1);
+    }
+
+    @Test
+    void consume_removesNewVectorsWhenDocumentWasDeletedBeforeFinalization() {
+        UUID documentId = UUID.randomUUID();
+        UUID knowledgeBaseId = UUID.randomUUID();
+        IngestionMessage message = new IngestionMessage(documentId, knowledgeBaseId);
+        com.majm.rag.knowledge.domain.Document stored =
+            new com.majm.rag.knowledge.domain.Document();
+        stored.setId(documentId);
+        stored.setName("guide.txt");
+        stored.setFileType("TXT");
+        stored.setFilePath("/tmp/guide.txt");
+
+        KnowledgeBase kb = new KnowledgeBase();
+        kb.setId(knowledgeBaseId);
+        kb.setChunkSize(128);
+        kb.setChunkOverlap(0);
+
+        when(statusService.markProcessing(documentId)).thenReturn(Optional.of(stored));
+        when(statusService.markDone(documentId, 1)).thenReturn(false);
+        when(kbService.getById(knowledgeBaseId)).thenReturn(kb);
+        when(parserFactory.create("TXT", "/tmp/guide.txt")).thenReturn(() -> List.of(
+            new org.springframework.ai.document.Document("content")));
+
+        consumer.consume(message);
+
+        InOrder order = inOrder(vectorStore, chunkQueryService);
+        order.verify(vectorStore).add(anyList());
+        order.verify(chunkQueryService).deleteByDocumentFromIndex(documentId, 1);
+        order.verify(chunkQueryService).deleteByDocument(documentId);
+        verify(statusService, never()).markFailed(any(), any());
+    }
+
+    @Test
+    void consume_preservesPreviousVectorsWhenReplacementAddFails() {
+        UUID documentId = UUID.randomUUID();
+        UUID knowledgeBaseId = UUID.randomUUID();
+        IngestionMessage message = new IngestionMessage(documentId, knowledgeBaseId);
+        com.majm.rag.knowledge.domain.Document stored =
+            new com.majm.rag.knowledge.domain.Document();
+        stored.setId(documentId);
+        stored.setName("guide.txt");
+        stored.setFileType("TXT");
+        stored.setFilePath("/tmp/guide.txt");
+
+        KnowledgeBase kb = new KnowledgeBase();
+        kb.setId(knowledgeBaseId);
+        kb.setChunkSize(128);
+        kb.setChunkOverlap(0);
+
+        when(statusService.markProcessing(documentId)).thenReturn(Optional.of(stored));
+        when(statusService.markFailed(any(), anyString())).thenReturn(true);
+        when(kbService.getById(knowledgeBaseId)).thenReturn(kb);
+        when(parserFactory.create("TXT", "/tmp/guide.txt")).thenReturn(() -> List.of(
+            new org.springframework.ai.document.Document("content")));
+        org.mockito.Mockito.doThrow(new IllegalStateException("embedding failed"))
+            .when(vectorStore).add(anyList());
+
+        assertThatThrownBy(() -> consumer.consume(message))
+            .isInstanceOf(IllegalStateException.class)
+            .hasMessage("embedding failed");
+
+        verify(chunkQueryService, never()).deleteByDocument(documentId);
+        verify(chunkQueryService, never()).deleteByDocumentFromIndex(any(), anyInt());
     }
 }

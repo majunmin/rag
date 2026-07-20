@@ -45,11 +45,19 @@ public class IngestionConsumer {
 
         try {
             int chunkCount = ingest(doc, kb);
-            statusService.markDone(doc.getId(), chunkCount);
+            if (!statusService.markDone(doc.getId(), chunkCount)) {
+                chunkQueryService.deleteByDocument(doc.getId());
+                log.info("Discarded vectors for document {} deleted during ingestion", doc.getId());
+                return;
+            }
             log.info("Ingestion complete for document {}: {} chunks", doc.getId(), chunkCount);
         } catch (Exception e) {
             log.error("Ingestion failed for document {}", doc.getId(), e);
-            statusService.markFailed(doc.getId(), e.getMessage());
+            if (!statusService.markFailed(doc.getId(), e.getMessage())) {
+                chunkQueryService.deleteByDocument(doc.getId());
+                log.info("Discarded vectors for document {} deleted during failed ingestion", doc.getId());
+                return;
+            }
             throw e;
         }
     }
@@ -78,8 +86,10 @@ public class IngestionConsumer {
                 chunkId, chunks.get(i).getText(), metadata));
         }
 
-        chunkQueryService.deleteByDocument(doc.getId());
+        // Stable IDs make this an upsert. Preserve the previous complete set
+        // until all embeddings succeed, then prune chunks no longer present.
         vectorStore.add(indexedChunks);
+        chunkQueryService.deleteByDocumentFromIndex(doc.getId(), indexedChunks.size());
         return indexedChunks.size();
     }
 }

@@ -275,10 +275,10 @@ rag-admin/src/
   │   ├─ parserFactory.create(fileType, filePath).get()  Tika / TextReader
   │   ├─ OverlappingTokenTextSplitter (chunkSize, chunkOverlap)
   │   ├─ 每个 chunk 注入 metadata，并按 docId:chunkIndex 生成确定性 UUID
-  │   ├─ deleteByDocument(docId)                  (重试先清旧向量)
-  │   └─ vectorStore.add(chunks)
-  │       └─ FixedSizeBatchingStrategy.batch(chunks, 10)
-  │           └─ 每批 ≤10 → embeddingModel.embed → INSERT INTO vector_store
+  │   ├─ vectorStore.add(chunks)                  (稳定 ID upsert)
+  │   │   └─ FixedSizeBatchingStrategy.batch(chunks, 10)
+  │   │       └─ 每批 ≤10 → embeddingModel.embed → INSERT INTO vector_store
+  │   └─ deleteByDocumentFromIndex(docId, count)  (成功后裁剪旧尾部)
   │
   ├─ on success: statusService.markDone(docId, count)        (短事务 2)
   └─ on error  : statusService.markFailed(docId, msg) + throw (短事务 2'，异常向上抛)
@@ -289,7 +289,8 @@ rag-admin/src/
 
 **关键设计点**：
 - **事务 Outbox**：上传事务原子写 document 与待发布事件，避免 DB 已提交但 Kafka 消息丢失。
-- **至少一次 + 幂等消费**：发布确认前崩溃可能重复发送；DONE 短路、稳定 chunk ID 与先删后写使重试结果收敛。
+- **至少一次 + 幂等消费**：发布确认前崩溃可能重复发送；DONE 短路、稳定 chunk ID 与 upsert 后裁剪使重试结果收敛，失败不会先清空旧向量。
+- **删除竞态补偿**：若文档/KB 在处理过程中被删除，最终状态更新返回不存在，consumer 立即清理本次可能写入的向量。
 - **三段事务**：Tika 解析 + embedding HTTP 调用都在事务外执行，不占用 DB 连接。
 - **`IngestionStatusService` 独立 bean**：避免 self-invocation 绕过 `@Transactional` AOP 代理（这是上线前修复的一个 showstopper bug）。
 - **FixedSizeBatchingStrategy**：百炼 embedding 单批最多 10 个，默认 `TokenCountBatchingStrategy` 会塞几十个，必败。
