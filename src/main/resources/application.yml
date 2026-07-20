@@ -74,6 +74,10 @@ app:
   ingestion:
     topic: ${APP_INGESTION_TOPIC:document.ingestion}
     dlt-topic: ${APP_INGESTION_DLT_TOPIC:document.ingestion.dlt}
+    outbox:
+      delay-ms: ${APP_INGESTION_OUTBOX_DELAY_MS:1000}
+      batch-size: ${APP_INGESTION_OUTBOX_BATCH_SIZE:20}
+      send-timeout-ms: ${APP_INGESTION_OUTBOX_SEND_TIMEOUT_MS:10000}
   security:
     api-key-auth:
       enabled: ${API_KEY_AUTH_ENABLED:false}
