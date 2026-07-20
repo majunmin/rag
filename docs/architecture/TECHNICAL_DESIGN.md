@@ -2,7 +2,7 @@
 
 **配套文档**: `SYSTEM_ARCHITECTURE.md`
 **目标读者**: 接手开发、做扩展、做改造的工程师
-**最后更新**: 2026-05-08
+**最后更新**: 2026-07-20
 
 ---
 
@@ -76,23 +76,26 @@
 
 ### 1.6 SSE 流格式
 
-由 `ChatSseEvents.wrap(Flux<String>)` 包装为 `Flux<ServerSentEvent<String>>`，三类帧：
+由 `ChatSseEvents.wrap(ChatStream)` 包装为 `Flux<ServerSentEvent<String>>`，四类帧：
 
 | event | data | 时机 |
 |---|---|---|
+| `context` | 本轮实际送入 LLM 的 `SearchResultItem[]` JSON | 首帧，只发送一次；单轮与多轮接口一致 |
 | `token` | 单个 LLM token 文本 | 每个上游 `onNext` |
 | `done` | 空字符串 | 流正常结束 |
 | `error` | `ErrorResponse` JSON（`{code, message, timestamp, traceId}`） | 上游 `onError`；同时服务端 `log.error("[{traceId}] SSE stream failed", t)` 写完整堆栈 |
 
 前端 `streamRequest`（`rag-admin/src/api/client.ts`）按事件类型分流：
-- `token` → `controller.enqueue(data)`（空字符串也保留，Spring 对 `""` 元素发 `data:\n\n`）
+- `context` → 解析 JSON 并附加到当前 assistant 消息；不再调用 `/search` 二次检索
+- `token` → `controller.enqueue({type: "token", text: data})`（空字符串也保留）
 - `done` → `controller.close()`
 - `error` → `controller.error(new StreamServerError(payload))`，携带 `code` + `traceId`
 - 兼容性：未知事件类型当 token 处理；`[DONE]` 旧 sentinel 仍被跳过
 - 跨 chunk 边界缓冲（`buffer` 变量），CRLF 与 LF 都支持
 - `useStreamingChat` 捕获 `StreamServerError` 后，把 `message（trace: xxxxxxxx）` 追加到当前 AI 消息尾部作为 `⚠️` 标记
 
-测试：`ChatSseEventsTest`（4 case：正常完成 / 上游异常 / 流首异常 / 空流）；前端 `api.client.test.ts`（12 case，覆盖空 token、CRLF、TCP 碎片）。
+测试：`ChatSseEventsTest` 覆盖 context 首帧、正常完成、上游异常和空流；前端
+`api.client.test.ts` 覆盖 context/token/done/error、空 token、CRLF 与 TCP 碎片。
 
 ---
 
@@ -126,6 +129,7 @@ public class ChunkQueryService {
 
     public List<DocumentChunkResponse> listByDocument(UUID documentId);
     public int deleteByDocument(UUID documentId);
+    public int deleteByDocumentFromIndex(UUID documentId, int fromIndex);
     public int deleteByKnowledgeBase(UUID kbId);
 }
 ```
@@ -211,44 +215,48 @@ Hibernate 在 UPDATE 时附带 `WHERE version = ?`；版本不匹配抛 `ObjectO
 ```java
 @Component @RequiredArgsConstructor @Slf4j
 public class IngestionConsumer {
-    private static final int MIN_CHUNK_SIZE = 5;
-    private static final int MAX_CHUNK_SIZE = 10000;
-    private static final boolean KEEP_SEPARATOR = true;
-
-    private final KnowledgeBaseService kbService;
     private final IngestionStatusService statusService;
-    private final DocumentParserFactory parserFactory;
-    private final VectorStore vectorStore;
+    private final IngestionProcessor processor;
 
     @KafkaListener(topics = "${app.ingestion.topic:document.ingestion}",
                    groupId = "${spring.kafka.consumer.group-id:rag-ingestion}")
-    public void consume(IngestionMessage msg) {                    // 注意：consume 没有 @Transactional
-        Document doc = statusService.markProcessing(msg.documentId());
-        KnowledgeBase kb = kbService.getById(msg.knowledgeBaseId());
+    public void consume(IngestionMessage msg) {
+        ProcessingDecision decision = statusService.markProcessing(msg.documentId());
+        if (decision != READY) return;                              // DONE / 已删除幂等跳过
         try {
-            int chunkCount = ingest(doc, kb);                       // 无事务
-            statusService.markDone(doc.getId(), chunkCount);
+            processor.process(msg);
         } catch (Exception e) {
-            statusService.markFailed(doc.getId(), e.getMessage());
-            throw e;                                                // 让 Kafka 重试 + DLT
+            statusService.markFailed(msg.documentId(), e.getMessage());
+            throw e;                                               // 让 Kafka 重试 + DLT
         }
     }
+}
 
-    private int ingest(Document doc, KnowledgeBase kb) {
+@Service @RequiredArgsConstructor
+public class IngestionProcessor {
+    @Transactional
+    public Result process(IngestionMessage msg) {
+        Document doc = documentRepository.findByIdForUpdate(msg.documentId())
+            .orElse(null);
+        if (doc == null) return MISSING;
+        if (doc.getStatus() == DONE) return ALREADY_DONE;           // 等待行锁后的二次检查
+        KnowledgeBase kb = doc.getKnowledgeBase();
+
         DocumentReader reader = parserFactory.create(doc.getFileType(), doc.getFilePath());
         var rawDocs = reader.get();
-        var splitter = new TokenTextSplitter(kb.getChunkSize(), kb.getChunkOverlap(),
-                                              MIN_CHUNK_SIZE, MAX_CHUNK_SIZE, KEEP_SEPARATOR);
+        var splitter = new OverlappingTokenTextSplitter(kb.getChunkSize(), kb.getChunkOverlap());
         var chunks = splitter.apply(rawDocs);
         for (int i = 0; i < chunks.size(); i++) {
-            chunks.get(i).getMetadata().putAll(Map.of(
-                "knowledge_base_id", kb.getId().toString(),
-                "document_id", doc.getId().toString(),
-                "document_name", doc.getName(),
-                "chunk_index", i));
+            // 复制原 metadata，并以 UUID.nameUUIDFromBytes(docId + ":" + i)
+            // 生成稳定 ID 后构造待写入 chunk。
         }
-        vectorStore.add(chunks);                                    // 含 FixedSizeBatchingStrategy
-        return chunks.size();
+        vectorStore.add(indexedChunks);                              // 稳定 ID upsert
+        chunkQueryService.deleteByDocumentFromIndex(                 // 成功后裁剪旧尾部
+            doc.getId(), indexedChunks.size());
+        doc.setStatus(DONE);                                         // 与向量写入原子提交
+        doc.setChunkCount(indexedChunks.size());
+        doc.setErrorMessage(null);
+        return COMPLETED;
     }
 }
 ```
@@ -260,13 +268,15 @@ public class IngestionConsumer {
 public class IngestionStatusService {
     private final DocumentRepository documentRepository;
 
-    @Transactional public Document markProcessing(UUID id) { ... doc.setStatus(PROCESSING); return doc; }
-    @Transactional public void markDone(UUID id, int count) { ... doc.setStatus(DONE); doc.setChunkCount(count); doc.setErrorMessage(null); }
-    @Transactional public void markFailed(UUID id, String msg) { ... doc.setStatus(FAILED); doc.setErrorMessage(msg); }
+    @Transactional public ProcessingDecision markProcessing(UUID id) { ... }
+    @Transactional public boolean markFailed(UUID id, String msg) { ... }
 }
 ```
 
-依赖 JPA dirty checking：`findById` 返回 managed 实体 → setter 修改 → 事务提交时 Hibernate 自动 flush UPDATE。**没有显式 `save()`** 是有意为之（符合 P3C），见 SYSTEM_ARCHITECTURE.md ADR #5。
+两个方法都通过 `findByIdForUpdate` 获取悲观写锁。`markProcessing` 在短事务中提交
+可观察的 `PROCESSING`；`markFailed` 与处理事务串行，并在看到 `DONE` 时保持成功状态。
+`IngestionProcessor` 再次锁行，将 parser、embedding、向量 upsert/裁剪和 `DONE` 放入
+一个事务，异常时整体回滚。依赖 JPA dirty checking，**没有显式 `save()`** 是有意为之。
 
 ### 3.4 KafkaConfig 重试策略
 
@@ -283,7 +293,7 @@ public DefaultErrorHandler errorHandler(KafkaTemplate<String, Object> tpl) {
 主 topic 3 partition、1 replica；DLT 1 partition、1 replica（生产应该 ≥2）。
 producer key = `documentId.toString()`，同一文档总是同一 partition、同一 consumer 实例处理，避免乱序。
 
-### 3.5 上传到发消息：AFTER_COMMIT 模式
+### 3.5 上传到发消息：事务 Outbox
 
 ```java
 @Service
@@ -291,22 +301,37 @@ public class DocumentUploadService {
     @Transactional
     public UploadDocumentResponse upload(UUID kbId, MultipartFile file) {
         validate(file);
-        // ... 落盘 + save ...
-        eventPublisher.publishEvent(new IngestionRequestedEvent(docId, kbId));
-        // 返回，事务提交
+        // ... 落盘 ...
+        Document saved = documentRepository.saveAndFlush(doc);
+        outboxRepository.enqueue(saved.getId(), kbId); // 与 document 同一 DB 事务
+        return response(saved);
     }
 }
 
-@Component
-public class IngestionEventListener {
-    @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
-    public void onIngestionRequested(IngestionRequestedEvent evt) {
-        kafkaTemplate.send(ingestionTopic, evt.documentId().toString(), new IngestionMessage(...));
+@Service
+public class IngestionOutboxPublisher {
+    @Scheduled(fixedDelayString = "${app.ingestion.outbox.delay-ms:1000}")
+    @Transactional
+    public void publishReady() {
+        for (var event : repository.lockReadyBatch(batchSize)) { // FOR UPDATE SKIP LOCKED
+            try {
+                kafkaTemplate.send(topic, event.documentId().toString(), message).get(timeout);
+                repository.markPublished(event.id());
+            } catch (Exception e) {
+                repository.markRetry(event.id(), nextAttempt, nextAttemptAt, rootMessage(e));
+            }
+        }
     }
 }
 ```
 
-DB 提交后才发消息：DB 回滚时 Kafka 上不会留下幽灵消息；同步发送线程也不在 DB 事务里。
+`document` 与 Outbox 事件原子提交，消除了 DB 已提交但 Kafka 发送进程崩溃造成的消息丢失窗口。
+Outbox 仓储使用 JDBC，因此先 `saveAndFlush` 保证父记录 INSERT 已执行，再写带外键的
+Outbox 行；二者仍由同一 Spring 事务提交或回滚。
+发布失败保留 `PENDING`，记录 `attempt_count`、`next_attempt_at` 和 `last_error`，按
+2s 起步、最高 300s 的指数退避重试。发布语义为 at-least-once，消费端通过 DONE
+短路、文档行锁、确定性 chunk ID 和事务内 upsert 后裁剪保证重试幂等；V7 外键
+阻止已删除文档产生孤儿向量。
 
 ---
 
@@ -414,10 +439,11 @@ public class ChatService {
         return new ArrayList<>(messages.subList(messages.size() - maxSize, messages.size()));
     }
 
-    public Flux<String> continueConversation(UUID id, ConversationMessageRequest req) {
+    public ChatStream continueConversation(UUID id, ConversationMessageRequest req) {
         Conversation conv = conversationRepository.findById(id)
             .orElseThrow(() -> ResourceNotFoundException.of("Conversation", id));
-        String context = buildContext(conv.getKnowledgeBaseId(), req.question(), req.topK());
+        RetrievedContext context = retrieveContext(
+            conv.getKnowledgeBaseId(), req.question(), req.topK(), priorHistory);
 
         List<Map<String, String>> history = new ArrayList<>(conv.getMessages());
         history.add(Map.of(MSG_ROLE, ROLE_USER, MSG_CONTENT, req.question()));
@@ -426,13 +452,14 @@ public class ChatService {
         conversationRepository.save(conv);                                   // ← 触发 @Version 检查
 
         StringBuilder reply = new StringBuilder();
-        return chatClient.prompt()
-            .system(s -> s.text(RAG_SYSTEM_PROMPT).param("context", context))
+        Flux<String> tokens = chatClient.prompt()
+            .system(s -> s.text(RAG_SYSTEM_PROMPT).param("context", context.promptText()))
             .messages(history.stream().map(this::toMessage).toList())
             .stream().content()
             .doOnNext(reply::append)
             .doOnComplete(() ->
                 persistenceService.appendAssistantMessage(id, reply.toString()));
+        return new ChatStream(context.items(), tokens);
     }
 }
 ```
@@ -598,18 +625,20 @@ const sendMessage = useCallback(async (opts): Promise<string> => {
     setMessages(prev => [...prev, userMsg, { id: aiMsgId, role: 'assistant', ... }]);
     try {
         const stream = await ...;
-        for await tokens append: setMessages(prev => prev.map(m => m.id === aiMsgId ? {...m, content: m.content + value} : m));
+        for await (const event of stream) {
+            setMessages(prev => prev.map(m => m.id !== aiMsgId ? m
+                : event.type === 'context'
+                    ? {...m, chunks: event.chunks}
+                    : {...m, content: m.content + event.text}));
+        }
     } catch { ... }
     return aiMsgId;                       // ← 返回给调用方
 }, []);
-
-// ChatPage.tsx
-const aiMsgId = await sendMessage({...});
-const chunks = await searchKb(kbId, q, topK);
-attachChunks(aiMsgId, chunks);            // 不依赖闭包里的 messages 快照
 ```
 
-之前 bug：`[...messages].reverse().find(m => m.role === 'assistant')` 拿到的是发送前的 messages 快照，会 attach 到上一条或未定义。
+`context` 与 token 属于同一 SSE 响应，且该 context 就是后端构造 prompt 时使用的
+同一批检索结果。前端不再在流结束后调用 `/search`，因此查询重写、rerank 或索引变化
+不会造成展示依据与实际回答依据不一致。
 
 ### 8.3 文档列表轮询
 
@@ -689,6 +718,10 @@ app:
   ingestion:
     topic: document.ingestion
     dlt-topic: document.ingestion.dlt
+    outbox:
+      delay-ms: ${APP_INGESTION_OUTBOX_DELAY_MS:1000}
+      batch-size: ${APP_INGESTION_OUTBOX_BATCH_SIZE:20}
+      send-timeout-ms: ${APP_INGESTION_OUTBOX_SEND_TIMEOUT_MS:10000}
   security.api-key-auth:
     enabled: ${API_KEY_AUTH_ENABLED:false}
     expected-key: ${API_KEY:}
@@ -724,6 +757,9 @@ springdoc:
 | V3 | `V3__update_embedding_dimension_for_bailian.sql` | 1536 → 1024 维（百炼 text-embedding-v3） |
 | V4 | `V4__add_vector_store_table.sql` | 建 Spring AI 标准 `vector_store` 表 + HNSW 索引；DROP 原 `document_chunk` |
 | V5 | `V5__add_conversation_version.sql` | `conversation` 加 `version BIGINT NOT NULL DEFAULT 0`（乐观锁） |
+| V6 | `V6__add_ingestion_outbox_and_chunk_uniqueness.sql` | 新增 `ingestion_outbox`；清理重复向量并为 `(document_id, chunk_index)` 建唯一索引 |
+| V7 | `V7__enforce_vector_document_integrity.sql` | 清理孤儿向量；增加生成 `document_id`、文档外键与级联删除 |
+| V8 | `V8__remove_partial_legacy_vectors.sql` | 删除非 DONE 文档的旧随机 ID 部分向量，避免确定性 ID 重试冲突 |
 
 **迁移原则**：
 - 单向（不写 down 脚本，prod 走 backup + redeploy）
@@ -739,15 +775,21 @@ springdoc:
 | 测试 | 类型 | 范围 |
 |---|---|---|
 | `DocumentParserFactoryTest` | unit | 文件类型 → reader 选择；URL 分支已删（SSRF 防御） |
-| `DocumentUploadServiceTest` | unit | 校验路径，事件发布，empty/unsupported 场景 |
-| `ChatServiceTest` | unit | `buildContext`（package-private 暴露给测试） |
+| `DocumentUploadServiceTest` | unit | 校验路径、同事务 Outbox 入队、empty/unsupported 场景 |
+| `ChatServiceTest` | unit | 单轮/多轮检索结果同时用于 prompt 与 SSE context |
 | `KnowledgeBaseServiceTest` | unit | CRUD、ResourceNotFound、delete 路径（磁盘清理 + 缺失 KB 短路） |
 | `FixedSizeBatchingStrategyTest` | unit | 分批边界（整除、余数、空、null、负数、顺序） |
 | `MmrDeduplicatorTest` | unit | λ=0 / λ=1 / 中间值、近重复丢弃、clamp、fallback relevance |
 | `RetrievalServiceTest` | unit | recall→rerank→threshold→MMR 全链路；expand-factor、阈值清空、缺 rerank_score |
-| `ChatSseEventsTest` | unit | token/done/error 三类帧；流首异常；空流 |
+| `ChatSseEventsTest` | unit | context/token/done/error 四类帧；流首异常；空流 |
+| `IngestionOutboxPublisherTest` | unit | 发布成功、失败记录与退避重试 |
+| `IngestionConsumerTest` | unit | typed claim 编排、DONE/删除跳过、事务失败落库 |
+| `IngestionProcessorTest` | unit | 行锁二次检查、稳定 chunk ID、事务内 upsert/裁剪/完成 |
+| `IngestionStatusServiceTest` | unit | 加锁状态迁移、retry 清理旧错误、DONE 不被迟到失败覆盖 |
+| `DocumentServiceTest` | unit | 文档列表返回持久化的摄入失败原因 |
 | `StartupValidatorTest` | unit | prod profile 占位 key、dev 默认密码、非 prod 跳过、production 别名 |
-| `IngestionConsumerIntegrationTest` | integration | `@SpringBootTest` + 本地 PG/Kafka + WireMock；happy + failure path |
+| `IngestionConsumerIntegrationTest` | integration | 本地 PG/Kafka + WireMock；happy/failure、V7 外键、并发串行、删除竞态 |
+| `IngestionMigrationIntegrationTest` | integration | 独立 schema 先迁移到 V7 并注入旧数据，再验证 V8 仅清理未完成向量 |
 
 总数 ~40 个（参数化展开后更多），CI 时间 ~12s（不含集成测试 5s 额外）。
 
@@ -774,10 +816,10 @@ springdoc:
 | 操作 | 延迟 | 说明 |
 |---|---|---|
 | KB CRUD | <50ms | 简单 JPA |
-| 文档上传（API 返回） | <200ms | 落盘 + 一次 INSERT + Kafka send |
+| 文档上传（API 返回） | <200ms | 落盘 + document/outbox 两次 INSERT；Kafka 异步发布 |
 | 文档摄入（端到端） | 5-30s | 视文档大小，主要花在 Tika + embedding API |
 | 单次 RAG chat（首 token） | 1-2s | 一次 embedding（query）+ 一次 ANN + LLM TTFT |
-| ���次 RAG chat（完整） | 5-15s | LLM 流式输出长度决定 |
+| 单次 RAG chat（完整） | 5-15s | LLM 流式输出长度决定 |
 
 ### 12.2 已知瓶颈
 
@@ -802,7 +844,7 @@ HikariCP 默认 10 连接。Kafka consumer concurrency=1，长事务已拆为短
 | 文档全部 FAILED | 检查 LLM API key、网络、batch-size 配置 | 调对应 env |
 | `/api/actuator/health` 返 DOWN | PG / Kafka 连不上 | docker-compose ps |
 | 上传 413 | 文件 > 25MB | 拆文件或调 multipart 上限（生产慎重） |
-| Chat 流半截卡住 | 后端异常截断 SSE | 看后端日志 traceId（待改进：发 `event: error`） |
+| Chat 流中断 | 前端消息显示结构化流错误 | 用消息中的 traceId 查询后端日志 |
 | 删除 KB 后文件还在 | StorageService.delete 失败（warn 日志） | 手动 rm -rf `~/rag-uploads/<kbId>/` |
 
 ### 13.2 日志关键字
@@ -865,24 +907,20 @@ REINDEX INDEX vector_store_embedding_hnsw_idx;
 ## 15. 附录：版本快照
 
 ```
-git HEAD:     00804ec  fix(ingestion): cap embedding batch size at 10 for Aliyun DashScope
 Java:         21
 Spring Boot:  3.3.5
-Spring AI:    1.0.0
+Spring AI:    1.1.5
 PostgreSQL:   18 + pgvector
 Kafka:        3.8.0
 Tika:         3.1.0
 ```
 
-测试结果（最近一次 `mvn test`）：
+发布前验证命令：
 
-```
-[INFO] Tests run: 23, Failures: 0, Errors: 0, Skipped: 0
-```
-
-前端（`pnpm test --run`）：
-
-```
-Test Files  1 passed (1)
-     Tests  7 passed (7)
+```bash
+./mvnw test
+cd ../rag-admin
+pnpm test -- --run
+pnpm lint
+pnpm build
 ```

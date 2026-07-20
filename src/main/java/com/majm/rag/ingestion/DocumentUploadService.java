@@ -8,7 +8,6 @@ import com.majm.rag.knowledge.domain.KnowledgeBase;
 import lombok.RequiredArgsConstructor;
 import org.apache.commons.io.FilenameUtils;
 import org.apache.commons.lang3.StringUtils;
-import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
@@ -25,7 +24,7 @@ public class DocumentUploadService {
     private final KnowledgeBaseService kbService;
     private final DocumentRepository documentRepository;
     private final StorageService storageService;
-    private final ApplicationEventPublisher eventPublisher;
+    private final IngestionOutboxRepository outboxRepository;
 
     @Transactional
     public UploadDocumentResponse upload(UUID knowledgeBaseId, MultipartFile file) {
@@ -42,9 +41,11 @@ public class DocumentUploadService {
         doc.setName(displayName);
         doc.setFileType(detectFileType(displayName));
         doc.setFilePath(path);
-        Document savedDoc = documentRepository.save(doc);
+        // The outbox repository uses JDBC directly, so flush the JPA insert
+        // before its foreign key is checked within the same transaction.
+        Document savedDoc = documentRepository.saveAndFlush(doc);
 
-        eventPublisher.publishEvent(new IngestionRequestedEvent(docId, knowledgeBaseId));
+        outboxRepository.enqueue(savedDoc.getId(), knowledgeBaseId);
 
         return new UploadDocumentResponse(savedDoc.getId(), savedDoc.getName(),
             savedDoc.getStatus().name());

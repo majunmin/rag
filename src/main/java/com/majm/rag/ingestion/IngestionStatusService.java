@@ -16,27 +16,38 @@ public class IngestionStatusService {
     private final DocumentRepository documentRepository;
 
     @Transactional
-    public Document markProcessing(UUID documentId) {
-        Document doc = documentRepository.findById(documentId)
-            .orElseThrow(() -> new IllegalStateException("Document not found: " + documentId));
+    public ProcessingDecision markProcessing(UUID documentId) {
+        var document = documentRepository.findByIdForUpdate(documentId);
+        if (document.isEmpty()) {
+            return ProcessingDecision.MISSING;
+        }
+        Document doc = document.get();
+        if (doc.getStatus() == DocumentStatus.DONE) {
+            return ProcessingDecision.ALREADY_DONE;
+        }
         doc.setStatus(DocumentStatus.PROCESSING);
-        return doc;
-    }
-
-    @Transactional
-    public void markDone(UUID documentId, int chunkCount) {
-        Document doc = documentRepository.findById(documentId)
-            .orElseThrow(() -> new IllegalStateException("Document not found: " + documentId));
-        doc.setStatus(DocumentStatus.DONE);
-        doc.setChunkCount(chunkCount);
         doc.setErrorMessage(null);
+        return ProcessingDecision.READY;
     }
 
     @Transactional
-    public void markFailed(UUID documentId, String errorMessage) {
-        Document doc = documentRepository.findById(documentId)
-            .orElseThrow(() -> new IllegalStateException("Document not found: " + documentId));
+    public boolean markFailed(UUID documentId, String errorMessage) {
+        var document = documentRepository.findByIdForUpdate(documentId);
+        if (document.isEmpty()) {
+            return false;
+        }
+        Document doc = document.get();
+        if (doc.getStatus() == DocumentStatus.DONE) {
+            return true;
+        }
         doc.setStatus(DocumentStatus.FAILED);
         doc.setErrorMessage(errorMessage);
+        return true;
+    }
+
+    public enum ProcessingDecision {
+        READY,
+        ALREADY_DONE,
+        MISSING
     }
 }

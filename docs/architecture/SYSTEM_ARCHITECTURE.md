@@ -2,7 +2,7 @@
 
 **项目**: RAG 知识库系统（rag0429 后端 + rag-admin 前端）
 **版本**: 0.0.1-SNAPSHOT，预上线状态
-**最后更新**: 2026-05-08
+**最后更新**: 2026-07-20
 
 ---
 
@@ -57,9 +57,9 @@
 │   │   Async ingestion │     │ embedding API   │     │              │
 │   │   (Kafka)         │     │                 │     │              │
 │   │ ┌──────────────┐  │     │                 │     │              │
-│   │ │IngestionEvent│  │     │                 │     │              │
-│   │ │   Listener    │ │     │                 │     │              │
-│   │ │ (AFTER_COMMIT)│ │     │                 │     │              │
+│   │ │  Ingestion   │  │     │                 │     │              │
+│   │ │   Outbox     │  │     │                 │     │              │
+│   │ │  Publisher   │  │     │                 │     │              │
 │   │ └──────┬───────┘  │     │                 │     │              │
 │   │        ▼          │     │                 │     │              │
 │   │   Kafka topic     │     │                 │     │              │
@@ -89,6 +89,7 @@
             │  knowledge_base         │         │   /embeddings         │
             │  document               │         │   /chat/completions   │
             │  conversation           │         │                      │
+            │  ingestion_outbox       │         │                      │
             │  vector_store (HNSW)    │         │   max batch = 10     │
             └─────────────────────────┘         └──────────────────────┘
                         │
@@ -182,18 +183,19 @@ com.majm.rag/
 │   │   ├── KnowledgeBaseController        # KB CRUD + /search
 │   │   └── DocumentController              # 上传 / 列表 / 删除 / chunks
 │   ├── KnowledgeBaseService
-│   ├── DocumentService                    # 抽取自原 Controller，统一事务边��
+│   ├── DocumentService                    # 抽取自原 Controller，统一事务边界
 │   ├── ChunkQueryService                  # 通过 JdbcTemplate 查 vector_store
 │   ├── KnowledgeBaseRepository / DocumentRepository
 │   ├── domain/ {KnowledgeBase, Document, *Status}
 │   └── dto/ {Create*, Update*, *Response, SearchKnowledgeBaseRequest, ...}
 │
-├── ingestion/             # 摄入域：上传 → Kafka → 解析 → 切分 → embedding → 入向量库
-│   ├── DocumentUploadService              # 同步 API 入口（写 DB + 落盘 + 发 event）
-│   ├── IngestionEventListener             # @TransactionalEventListener(AFTER_COMMIT) 发 Kafka
-│   ├── IngestionRequestedEvent
-│   ├── IngestionConsumer                  # @KafkaListener，三段事务
-│   ├── IngestionStatusService             # markProcessing/markDone/markFailed（独立 bean）
+├── ingestion/             # 摄入域：上传 → Outbox → Kafka → 解析 → embedding
+│   ├── DocumentUploadService              # 同步 API 入口（落盘 + document/outbox 原子写入）
+│   ├── IngestionOutboxRepository           # Outbox 入队、SKIP LOCKED 取批与状态更新
+│   ├── IngestionOutboxPublisher            # @Scheduled 发布 Kafka + 退避重试
+│   ├── IngestionConsumer                  # @KafkaListener，认领 / 失败编排
+│   ├── IngestionProcessor                 # 行锁下原子写向量、裁剪与 DONE
+│   ├── IngestionStatusService             # markProcessing/markFailed（加锁短事务）
 │   ├── DocumentParserFactory              # PDF/DOCX → Tika，TXT/MD → TextReader
 │   ├── StorageService / LocalStorageService
 │   └── dto/ {IngestionMessage, UploadDocumentResponse}
@@ -256,37 +258,42 @@ rag-admin/src/
   ├─ DocumentUploadService.upload (in @Transactional)
   │   ├─ 校验扩展名（pdf/docx/doc/md/txt 白名单 + 25MB 上限）
   │   ├─ LocalStorageService.store → ~/rag-uploads/<kbId>/<docId>.<ext>  ← 路径用 docId，避免 traversal
-  │   ├─ documentRepository.save(doc, status=PENDING)
-  │   └─ eventPublisher.publishEvent(IngestionRequestedEvent)
+  │   ├─ documentRepository.saveAndFlush(doc, status=PENDING)
+  │   └─ outboxRepository.enqueue(docId, kbId)
   ▼
-[Tx commit]
-  │
+[Tx commit: document + ingestion_outbox 原子提交]
+  │ ─────── (response 202 Accepted to user) ───────
   ▼
-[IngestionEventListener @TransactionalEventListener(AFTER_COMMIT)]
-  │ kafkaTemplate.send(document.ingestion, key=docId, IngestionMessage)
-  │
-  ▼ ─────── (response 202 Accepted to user) ───────
+[IngestionOutboxPublisher @Scheduled]
+  ├─ SELECT ... FOR UPDATE SKIP LOCKED LIMIT batchSize
+  ├─ kafkaTemplate.send(...).get(sendTimeout)
+  ├─ success: status=PUBLISHED
+  └─ failure: attempt_count+1, next_attempt_at 指数退避, last_error
   ▼
 [IngestionConsumer.consume @KafkaListener]
-  ├─ statusService.markProcessing(docId)         (短事务 1)
-  ├─ ingest(doc, kb)                              (无事务)
+  ├─ statusService.markProcessing(docId)         (短事务 1；行锁；DONE/缺失则跳过)
+  ├─ IngestionProcessor.process(msg)              (事务 2；持有文档行锁)
   │   ├─ parserFactory.create(fileType, filePath).get()  Tika / TextReader
-  │   ├─ TokenTextSplitter (chunkSize, chunkOverlap)
-  │   ├─ 每个 chunk 注入 metadata: knowledge_base_id / document_id / document_name / chunk_index
-  │   └─ vectorStore.add(chunks)
-  │       └─ FixedSizeBatchingStrategy.batch(chunks, 10)
-  │           └─ 每批 ≤10 → embeddingModel.embed → INSERT INTO vector_store
+  │   ├─ OverlappingTokenTextSplitter (chunkSize, chunkOverlap)
+  │   ├─ 每个 chunk 注入 metadata，并按 docId:chunkIndex 生成确定性 UUID
+  │   ├─ vectorStore.add(chunks)                  (稳定 ID upsert)
+  │   │   └─ FixedSizeBatchingStrategy.batch(chunks, 10)
+  │   │       └─ 每批 ≤10 → embeddingModel.embed → INSERT INTO vector_store
+  │   ├─ deleteByDocumentFromIndex(docId, count)  (成功后裁剪旧尾部)
+  │   └─ status = DONE                            (与向量变更原子提交)
   │
-  ├─ on success: statusService.markDone(docId, count)        (短事务 2)
-  └─ on error  : statusService.markFailed(docId, msg) + throw (短事务 2'，异常向上抛)
+  └─ on error: 事务 2 整体回滚；statusService.markFailed + throw (短事务 3)
 
    [Kafka DefaultErrorHandler] 失败时按 ExponentialBackoff(1s, 2s, 4s) 重试 3 次
    3 次仍失败 → DeadLetterPublishingRecoverer 写入 document.ingestion.dlt
 ```
 
 **关键设计点**：
-- **AFTER_COMMIT 发 Kafka**：避免 DB 回滚后消息已经在 broker 上的不一致。
-- **三段事务**：Tika 解析 + embedding HTTP 调用都在事务外执行，不占用 DB 连接。
+- **事务 Outbox**：上传事务原子写 document 与待发布事件，避免 DB 已提交但 Kafka 消息丢失。
+- **至少一次 + 幂等消费**：发布确认前崩溃可能重复发送；DONE 短路、稳定 chunk ID 与 upsert 后裁剪使重试结果收敛，失败不会先清空旧向量。
+- **删除与崩溃安全**：V7 将 metadata 中的文档 ID 映射为生成列并建立 `ON DELETE CASCADE` 外键；处理事务持有文档行锁，删除要么先完成、要么在处理提交后级联清理。
+- **并发串行化**：重复 delivery 在 `findByIdForUpdate` 上串行，后到者在拿锁后看到 `DONE`，不重复 embedding。
+- **处理事务**：parser、embedding HTTP、向量写入和 `DONE` 共用一个事务，以连接与锁持有时间换取 P0 原子性；后续可用 generation/staging 设计缩短事务。
 - **`IngestionStatusService` 独立 bean**：避免 self-invocation 绕过 `@Transactional` AOP 代理（这是上线前修复的一个 showstopper bug）。
 - **FixedSizeBatchingStrategy**：百炼 embedding 单批最多 10 个，默认 `TokenCountBatchingStrategy` 会塞几十个，必败。
 - **DLT**：3 次重试后投递至 dead-letter topic，避免无限重试阻塞分区。
@@ -302,15 +309,15 @@ ResponseEntity 201 Created + Location + ConversationResponse {id, ..., version=0
   ▼
 [用户] POST /api/v1/chat/conversations/{id}/messages  body={question, topK<=50}
   ▼
-[ChatController.continueConversation] returns Flux<String>
+[ChatController.continueConversation] returns Flux<ServerSentEvent<String>>
   │
   ▼
 [ChatService.continueConversation]
   ├─ conv = conversationRepository.findById(id) (else 404)
-  ├─ buildContext(kbId, question, topK):
+  ├─ retrieveContext(kbId, question, topK, history):
   │   └─ retrievalService.search → vectorStore.similaritySearch
   │       (filter: metadata.knowledge_base_id == kbId; topK clamped to [1,50])
-  │   → 拼成 context 字符串
+  │   → 同一批 chunk 同时生成 prompt context 与 SearchResultItem[]
   │
   ├─ history = trimHistory(conv.messages + new userMsg, max=20)   ← 滑窗
   ├─ conv.setMessages(history); conversationRepository.save(conv)
@@ -321,17 +328,21 @@ ResponseEntity 201 Created + Location + ConversationResponse {id, ..., version=0
        .system(RAG_SYSTEM_PROMPT, context)
        .messages(history → UserMessage/AssistantMessage)
        .stream().content()
-       .doOnNext(token → assistantReply.append(token); 推送到 SSE)
+       .doOnNext(token → assistantReply.append(token))
        .doOnComplete(() →
             persistenceService.appendAssistantMessage(id, assistantReply)
                                  (独立 @Transactional 写入))
+  ▼
+[ChatSseEvents]
+  └─ context（首帧）→ token* → done | error
 ```
 
 **关键设计点**：
 - **滑动窗口**：`app.chat.max-history-messages=20`，避免历史无限增长（每轮重写整 JSONB 列）。
 - **乐观锁**：`Conversation.version`（V5 migration 加列），并发写时只有一个成功，另一个收到 409。
 - **持久化分离**：`ConversationPersistenceService` 是独立 `@Service`，被 `chatService` 通过依赖注入调用，AOP 代理生效。
-- **错误流尚未结构化**：当前 SSE 流出错时反应式管道结束，客户端表现为半截响应。前端在 `useStreamingChat` 中捕捉异常并展示"连接中断，请重试"。生产改进项见第 8 节。
+- **精确检索上下文**：SSE 首帧直接携带本轮 prompt 使用的 chunk，前端不做第二次检索。
+- **结构化流错误**：中途失败发送 `error` 帧，携带 `STREAM_ERROR` 和 traceId；服务端日志保留完整异常。
 
 ### 5.3 知识库语义检索（直接 API）
 
@@ -342,13 +353,14 @@ POST /api/v1/knowledge-bases/{kbId}/search  body={query, topK}
 RetrievalService.search → 返回 List<SearchResultItem>
 ```
 
-主要供前端 Chat 测试台"查看召回 Chunks"使用——SSE 流不携带召回元数据，前端在流结束后单独发起 `/search` 请求获取展示。
+该端点供独立检索调试和 API 调用。Chat 测试台直接消费 SSE 的 `context` 帧，
+不会在流结束后再次调用该端点。
 
 ---
 
 ## 6. 数据模型
 
-### 6.1 表结构（Flyway V1-V5）
+### 6.1 表结构（Flyway V1-V8）
 
 ```sql
 knowledge_base
@@ -362,8 +374,9 @@ document
   created_at, updated_at
   INDEX (knowledge_base_id)
 
-vector_store              -- Spring AI 标准表（V4 引入）
-  id UUID PK, content TEXT, metadata JSONB, embedding VECTOR(1024)
+vector_store              -- Spring AI 标准表（V4 引入，V7 补文档外键）
+  id UUID PK, content TEXT, metadata JSONB, embedding VECTOR(1024),
+  document_id UUID GENERATED ... REFERENCES document(id) ON DELETE CASCADE
   HNSW INDEX (embedding vector_cosine_ops)
   GIN-style: ((metadata->>'document_id')), ((metadata->>'knowledge_base_id'))
 
@@ -373,16 +386,24 @@ conversation
   messages JSONB DEFAULT '[]',
   version BIGINT NOT NULL DEFAULT 0,    -- V5 加，乐观锁
   created_at, updated_at
+
+ingestion_outbox          -- V6 引入的事务 Outbox
+  id UUID PK,
+  document_id UUID UNIQUE REFERENCES document(id) ON DELETE CASCADE,
+  knowledge_base_id UUID REFERENCES knowledge_base(id) ON DELETE CASCADE,
+  status, attempt_count, next_attempt_at, published_at, last_error,
+  created_at, updated_at
 ```
 
 ### 6.2 删除级联策略
 
 | 触发 | DB 行为 | 应用补充 |
 |---|---|---|
-| 删除 KB | document、conversation 自动级联删除 | `KnowledgeBaseService.delete` 先收集 file_path 列表 → `vectorStore.delete(by kbId)` → `repository.deleteById` → `storageService.delete(file)` |
-| 删除 Document | （无级联到 vector_store，FK 缺失） | `DocumentService.delete` 先 `chunkQueryService.deleteByDocument` → `documentRepository.delete` → `storageService.delete(filePath)` |
+| 删除 KB | document、conversation、vector_store 自动级联删除 | 收集 file_path，应用层显式清理向量兼容旧数据，再删除 KB 与磁盘文件 |
+| 删除 Document | vector_store 自动级联删除 | 应用层仍显式清理向量兼容旧数据，再删除文档与磁盘文件 |
 
-`vector_store` 与 `document` 之间没有外键（vector_store 是 Spring AI 管理的独立表），所以删除链由应用层显式协调。
+V7 的生成列从 JSONB metadata 提取 `document_id`，因此 PgVectorStore 无需改变 INSERT
+列清单即可获得数据库外键保护；应用层显式删除保留为兼容与快速清理路径。
 
 ### 6.3 元数据约定
 
@@ -404,7 +425,7 @@ conversation
 # 后端
 docker-compose up -d        # 起 PG + Kafka
 export DASHSCOPE_API_KEY=sk-xxx
-mvn spring-boot:run         # Flyway 自动执行 V1-V5
+mvn spring-boot:run         # Flyway 自动执行 V1-V8
 
 # 前端
 cd ../rag-admin
@@ -422,6 +443,9 @@ pnpm dev                    # http://localhost:5173
 | `spring.ai.vectorstore.pgvector.dimensions` | 1024 | 改维度时需重建 vector_store |
 | `app.embedding.batch-size` | **10** | 百炼硬限；OpenAI 可设 2048 |
 | `app.chat.max-history-messages` | **20** | 多轮对话滑窗 |
+| `app.ingestion.outbox.delay-ms` | **1000** | Outbox 定时扫描间隔 |
+| `app.ingestion.outbox.batch-size` | **20** | 每轮锁定并发布的事件数，运行时限制为 1-100 |
+| `app.ingestion.outbox.send-timeout-ms` | **10000** | 等待 Kafka 发送确认的超时时间 |
 | `app.security.api-key-auth.{enabled, expected-key}` | dev `false` | prod 通过 env `API_KEY_AUTH_ENABLED=true` + `API_KEY=xxx` 开启 |
 | `spring.servlet.multipart.{max-file-size, max-request-size}` | 25MB / 30MB | 上传上限 |
 | `management.endpoints.web.base-path` | `/api/actuator` | 与业务 API 同前缀 |
@@ -455,9 +479,9 @@ pnpm dev                    # http://localhost:5173
 
 | 项 | 现状 | 改进 |
 |---|---|---|
-| SSE 错误事件 | `event: token / done / error` 三类帧；error 帧体为 `ErrorResponse` JSON 含 traceId | 见 `ChatSseEvents`；前端 `StreamServerError` 已对应消费 |
+| SSE 事件 | `context / token / done / error` 四类帧；error 帧体为 `ErrorResponse` JSON 含 traceId | 前端直接展示精确 context，并用 `StreamServerError` 消费错误 |
 | ModelRouter | 已删（dead code） | `KnowledgeBase.embeddingModel` 字段语义降为"informational only"，全局只用一个 EmbeddingModel |
-| 单���例 Kafka | docker-compose 单 broker，无副本 | 生产改 3 broker + replication factor ≥ 2 |
+| 单实例 Kafka | docker-compose 单 broker，无副本 | 生产改 3 broker + replication factor ≥ 2 |
 | API Key 鉴权 | 单租户共享 key，过滤器实现 | 真要多用户，换 OAuth2 / JWT |
 | 文件存储 | 本地磁盘；KB / Document 删除时已联动 `storageService.delete(filePath)` | 生产换 S3-compatible（OSS / MinIO） |
 | 检索后处理 | recall→cross-encoder rerank→`score-threshold` 过滤→MMR 去冗余 | rerank 策略调研见 `docs/research/2026-05-11-rerank-strategies.md` |
@@ -471,12 +495,12 @@ pnpm dev                    # http://localhost:5173
 
 | 类别 | 数量 | 说明 |
 |---|---|---|
-| 单元测试 | 后端 ~70 / 前端 12 | DocumentParserFactory, DocumentUploadService, ChatService, KnowledgeBaseService（含 delete 路径）, FixedSizeBatchingStrategy, MmrDeduplicator, RetrievalService（含 RRF 融合）, ChatSseEvents, StartupValidator, QueryRewriteService + 3 个 Rewriter, API client (Vitest) |
+| 单元测试 | 后端 / 前端 | 覆盖 Outbox 入队发布、摄入幂等、精确 context SSE、API Key 请求头及原有领域行为；数量以测试运行报告为准 |
 | 集成测试 | 2 | IngestionConsumer end-to-end（PG + Kafka + WireMock 拦截 LLM） |
 | 健康端点 | 1 | `/api/actuator/health{,/liveness,/readiness}` |
 | 已知遗漏 | — | ApiKeyFilter on/off 行为、ChatController 端到端 SSE |
 
-后端全绿，前端 12/12（SSE 行缓冲 + event 类型路由覆盖跨 chunk 边界与 error 帧）。
+发布前执行后端 `./mvnw test`，前端执行 `pnpm test -- --run && pnpm lint && pnpm build`。
 
 ---
 
@@ -503,14 +527,16 @@ pnpm dev                    # http://localhost:5173
 |---|---|---|---|
 | 1 | 用 Kafka 异步摄入（非同步嵌入） | 同步 / RabbitMQ | 单次摄入耗时数秒～数分钟，需要解耦；Kafka 自带 partition + DLT |
 | 2 | pgvector + Spring AI VectorStore（非独立向量库） | Milvus / Qdrant / Pinecone | 单实例规模够用，省一个组件；过滤可下推到 SQL `WHERE` |
-| 3 | Spring AI BatchingStrategy → 自��现 `FixedSizeBatchingStrategy` | 用默认 TokenCountBatchingStrategy | 百炼硬限 batch ≤10，token-based 必败 |
-| 4 | 三段事务摄入（PROCESSING / 处理 / DONE-FAILED） | 单大事务 + Propagation.REQUIRES_NEW | self-invocation 绕过 AOP；连接池占用过长 |
+| 3 | Spring AI BatchingStrategy → 自实现 `FixedSizeBatchingStrategy` | 用默认 TokenCountBatchingStrategy | 百炼硬限 batch ≤10，token-based 必败 |
+| 4 | PROCESSING 短事务 + 行锁处理事务 + FAILED 短事务 | 全程无事务 / generation staging | 当前以连接与锁持有时间换取向量和 DONE 的原子性；staging 是后续扩展方向 |
 | 5 | `IngestionStatusService` 独立 `@Service` | `IngestionConsumer` 内部 `@Transactional` 方法 | self-invocation bug |
 | 6 | `vector_store` 独立表（V4） | 自定义 `document_chunk` 复用 PgVectorStore | PgVectorStore 只写 4 列，与自定义 NOT NULL 列冲突，是上线前 showstopper |
 | 7 | `Conversation.@Version` + 滑窗 | 直接锁 / 无锁 | JSONB 行写入并发冲突；历史无限增长导致 token 爆炸 |
 | 8 | actuator base-path = `/api/actuator` | 默认 `/actuator` | 与业务 API 同前缀，前端 Vite proxy 和 Nginx 不需要额外规则 |
 | 9 | 前后端拆为两个 git repo | monorepo | 团队独立维护，发布节奏不同 |
 | 10 | docker-java/Testcontainers 的 Docker Engine 29 兼容性问题 → 集成测试用本地 docker-compose | 强行 Testcontainers | 等上游修复，临时降级；集成测试覆盖度不变 |
+| 11 | 上传事务 Outbox + Kafka 至少一次投递 | AFTER_COMMIT 事件监听器 / 分布式事务 | 消除提交后发送窗口；用幂等消费承接少量重复消息，复杂度低于 2PC |
+| 12 | vector_store 生成文档列 + FK；处理事务持有文档行锁 | 事后补偿删除 / 仅应用锁 | 覆盖进程崩溃、跨实例并发和删除竞态，不依赖补偿一定执行 |
 
 ---
 

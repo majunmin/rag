@@ -5,6 +5,7 @@ import com.majm.rag.chat.dto.ChatRequest;
 import com.majm.rag.common.exception.ResourceNotFoundException;
 import com.majm.rag.chat.dto.ConversationMessageRequest;
 import com.majm.rag.chat.dto.CreateConversationRequest;
+import com.majm.rag.knowledge.dto.SearchResultItem;
 import com.majm.rag.retrieval.RetrievalService;
 import com.majm.rag.retrieval.rewrite.QueryRewriteService;
 import com.majm.rag.retrieval.rewrite.RewriteResult;
@@ -62,23 +63,28 @@ public class ChatService {
         return new ArrayList<>(messages.subList(messages.size() - maxSize, messages.size()));
     }
 
-    String buildContext(UUID knowledgeBaseId, String query, int topK,
-                        List<Map<String, String>> history) {
+    private RetrievedContext retrieveContext(UUID knowledgeBaseId, String query, int topK,
+                                             List<Map<String, String>> history) {
         RewriteResult rewrite = queryRewriteService.rewrite(query, history);
         List<Document> chunks = retrievalService.search(knowledgeBaseId, query, topK, rewrite);
-        return chunks.stream()
+        String promptText = chunks.stream()
             .map(Document::getText)
             .collect(Collectors.joining("\n\n---\n\n"));
+        List<SearchResultItem> items = chunks.stream()
+            .map(doc -> new SearchResultItem(doc.getText(), doc.getMetadata()))
+            .toList();
+        return new RetrievedContext(promptText, items);
     }
 
-    public Flux<String> chat(ChatRequest request) {
-        String context = buildContext(
+    public ChatStream chat(ChatRequest request) {
+        RetrievedContext context = retrieveContext(
             request.knowledgeBaseId(), request.question(), request.topK(), List.of());
-        return chatClient.prompt()
-            .system(s -> s.text(RAG_SYSTEM_PROMPT).param("context", context))
+        Flux<String> tokens = chatClient.prompt()
+            .system(s -> s.text(RAG_SYSTEM_PROMPT).param("context", context.promptText()))
             .user(request.question())
             .stream()
             .content();
+        return new ChatStream(context.items(), tokens);
     }
 
     @Transactional
@@ -88,7 +94,7 @@ public class ChatService {
         return conversationRepository.save(conv);
     }
 
-    public Flux<String> continueConversation(UUID conversationId, ConversationMessageRequest request) {
+    public ChatStream continueConversation(UUID conversationId, ConversationMessageRequest request) {
         Conversation conv = conversationRepository.findById(conversationId)
             .orElseThrow(() -> ResourceNotFoundException.of("Conversation", conversationId));
 
@@ -96,7 +102,7 @@ public class ChatService {
         // can resolve coreference against prior turns without seeing the
         // current question echoed in history).
         List<Map<String, String>> priorHistory = trimHistory(conv.getMessages(), maxHistoryMessages);
-        String context = buildContext(
+        RetrievedContext context = retrieveContext(
             conv.getKnowledgeBaseId(), request.question(), request.topK(), priorHistory);
 
         List<Map<String, String>> history = new ArrayList<>(priorHistory);
@@ -107,8 +113,8 @@ public class ChatService {
 
         StringBuilder assistantReply = new StringBuilder();
 
-        return chatClient.prompt()
-            .system(s -> s.text(RAG_SYSTEM_PROMPT).param("context", context))
+        Flux<String> tokens = chatClient.prompt()
+            .system(s -> s.text(RAG_SYSTEM_PROMPT).param("context", context.promptText()))
             .messages(history.stream()
                 .map(m -> {
                     String role = m.get(MSG_ROLE);
@@ -121,5 +127,8 @@ public class ChatService {
             .content()
             .doOnNext(assistantReply::append)
             .doOnComplete(() -> persistenceService.appendAssistantMessage(conversationId, assistantReply.toString()));
+        return new ChatStream(context.items(), tokens);
     }
+
+    private record RetrievedContext(String promptText, List<SearchResultItem> items) {}
 }

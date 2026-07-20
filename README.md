@@ -83,6 +83,9 @@ export DASHSCOPE_API_KEY=sk-xxx
 | `API_KEY_AUTH_ENABLED` + `API_KEY` | 否 | 启用 `X-API-Key` 鉴权（prod 推荐） |
 | `CHAT_MAX_HISTORY_MESSAGES` | 否 | 多轮对话历史窗口，默认 20 |
 | `APP_EMBEDDING_BATCH_SIZE` | 否 | embedding 批量大小，默认 10（百炼上限），OpenAI 可设 2048 |
+| `APP_INGESTION_OUTBOX_DELAY_MS` | 否 | Outbox 扫描间隔，默认 1000ms |
+| `APP_INGESTION_OUTBOX_BATCH_SIZE` | 否 | 每次锁定并发布的 Outbox 事件数，默认 20，范围 1-100 |
+| `APP_INGESTION_OUTBOX_SEND_TIMEOUT_MS` | 否 | 单条 Kafka 发送确认超时，默认 10000ms |
 
 完整列表：见 [`src/main/resources/application.yml`](src/main/resources/application.yml)
 和 [`docs/architecture/TECHNICAL_DESIGN.md`](docs/architecture/TECHNICAL_DESIGN.md)。
@@ -127,7 +130,7 @@ rag0429/
 │   ├── application-dev.yml    开发 profile 覆盖
 │   ├── application-prod.yml   生产 profile 覆盖
 │   ├── logback-spring.xml     dev 彩色控制台 / prod JSON
-│   └── db/migration/          Flyway V1-V5
+│   └── db/migration/          Flyway V1-V8
 ├── src/test/java/             单元测试 + 集成测试
 ├── docs/
 │   ├── architecture/          系统架构 + 技术设计
@@ -143,7 +146,7 @@ rag0429/
 ## 数据库 Migration
 
 Flyway 启动时自动执行 `src/main/resources/db/migration/V*.sql`。
-当前到 V5：
+当前到 V8：
 
 | Version | 作用 |
 |---|---|
@@ -152,6 +155,17 @@ Flyway 启动时自动执行 `src/main/resources/db/migration/V*.sql`。
 | V3 | embedding 维度 1536 → 1024（百炼 text-embedding-v3） |
 | V4 | 引入 Spring AI 标准 `vector_store` 表，废弃 document_chunk |
 | V5 | conversation 加 `version BIGINT` 列，启用乐观锁 |
+| V6 | 新增摄入事务 Outbox，并约束同一文档的 chunk 序号唯一 |
+| V7 | 为向量增加文档外键与级联删除，阻止孤儿向量 |
+| V8 | 清理未完成文档的旧随机 ID 部分向量，保证升级后可重试 |
+
+上传事务同时写入 `document` 与 `ingestion_outbox`。后台发布器使用
+`FOR UPDATE SKIP LOCKED` 批量锁定待发布事件，收到 Kafka 确认后标记为
+`PUBLISHED`；失败时记录原因并指数退避重试。Kafka 至少一次投递产生的重复
+消息由消费端幂等处理：已完成文档直接跳过；处理事务持有文档行锁，并用确定性
+chunk ID 先完成 upsert、再裁剪旧尾部，向量写入与 `DONE` 状态原子提交。失败时
+事务整体回滚，保留上一份完整向量集。V7 的 `vector_store.document_id` 外键保证
+文档删除会级联清理向量，且已删除文档无法再写入孤儿向量。
 
 ---
 
@@ -163,12 +177,16 @@ Flyway 启动时自动执行 `src/main/resources/db/migration/V*.sql`。
 | 语义检索 | `POST /api/v1/knowledge-bases/{kbId}/search` |
 | Document | `POST/GET/DELETE /api/v1/knowledge-bases/{kbId}/documents[/{docId}]` |
 | Document Chunks | `GET /api/v1/knowledge-bases/{kbId}/documents/{docId}/chunks` |
-| Chat (���轮 SSE) | `POST /api/v1/chat` |
+| Chat (单轮 SSE) | `POST /api/v1/chat` |
 | Conversation | `POST /api/v1/chat/conversations` |
 | 多轮 SSE | `POST /api/v1/chat/conversations/{id}/messages` |
 | Health | `GET /api/actuator/health{,/liveness,/readiness}` |
 
 详见 Swagger UI 或 [`docs/architecture/TECHNICAL_DESIGN.md`](docs/architecture/TECHNICAL_DESIGN.md)。
+
+Chat SSE 首帧为 `context`（本次实际送入 LLM 的 `SearchResultItem[]`），随后是
+`token`，并以 `done` 或结构化 `error` 结束。客户端无需在流结束后再次调用
+`/search`，避免查询重写或检索波动导致展示上下文与回答依据不一致。
 
 ---
 
