@@ -23,39 +23,55 @@ class IngestionStatusServiceTest {
     @InjectMocks private IngestionStatusService statusService;
 
     @Test
-    void markProcessing_clearsPreviousFailureMessage() {
+    void markProcessing_locksRowAndClearsPreviousFailure() {
         UUID documentId = UUID.randomUUID();
-        Document failed = new Document();
-        failed.setId(documentId);
-        failed.setStatus(DocumentStatus.FAILED);
+        Document failed = document(documentId, DocumentStatus.FAILED);
         failed.setErrorMessage("provider unavailable");
-        when(documentRepository.findById(documentId)).thenReturn(Optional.of(failed));
+        when(documentRepository.findByIdForUpdate(documentId)).thenReturn(Optional.of(failed));
 
-        assertThat(statusService.markProcessing(documentId)).containsSame(failed);
-
+        assertThat(statusService.markProcessing(documentId))
+            .isEqualTo(IngestionStatusService.ProcessingDecision.READY);
         assertThat(failed.getStatus()).isEqualTo(DocumentStatus.PROCESSING);
         assertThat(failed.getErrorMessage()).isNull();
     }
 
     @Test
-    void markFailed_doesNotOverwriteCompletedDocument() {
+    void markProcessing_reportsCompletedAndMissingDocuments() {
+        UUID doneId = UUID.randomUUID();
+        UUID missingId = UUID.randomUUID();
+        when(documentRepository.findByIdForUpdate(doneId))
+            .thenReturn(Optional.of(document(doneId, DocumentStatus.DONE)));
+        when(documentRepository.findByIdForUpdate(missingId)).thenReturn(Optional.empty());
+
+        assertThat(statusService.markProcessing(doneId))
+            .isEqualTo(IngestionStatusService.ProcessingDecision.ALREADY_DONE);
+        assertThat(statusService.markProcessing(missingId))
+            .isEqualTo(IngestionStatusService.ProcessingDecision.MISSING);
+    }
+
+    @Test
+    void markFailed_locksRowAndDoesNotOverwriteCompletedDocument() {
         UUID documentId = UUID.randomUUID();
-        Document done = new Document();
-        done.setId(documentId);
-        done.setStatus(DocumentStatus.DONE);
-        when(documentRepository.findById(documentId)).thenReturn(Optional.of(done));
+        Document done = document(documentId, DocumentStatus.DONE);
+        when(documentRepository.findByIdForUpdate(documentId)).thenReturn(Optional.of(done));
 
         assertThat(statusService.markFailed(documentId, "late failure")).isTrue();
-
         assertThat(done.getStatus()).isEqualTo(DocumentStatus.DONE);
         assertThat(done.getErrorMessage()).isNull();
     }
 
     @Test
-    void markDone_reportsDeletedDocument() {
+    void markFailed_reportsDeletedDocument() {
         UUID documentId = UUID.randomUUID();
-        when(documentRepository.findById(documentId)).thenReturn(Optional.empty());
+        when(documentRepository.findByIdForUpdate(documentId)).thenReturn(Optional.empty());
 
-        assertThat(statusService.markDone(documentId, 3)).isFalse();
+        assertThat(statusService.markFailed(documentId, "late failure")).isFalse();
+    }
+
+    private Document document(UUID id, DocumentStatus status) {
+        Document document = new Document();
+        document.setId(id);
+        document.setStatus(status);
+        return document;
     }
 }

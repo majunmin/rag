@@ -193,8 +193,9 @@ com.majm.rag/
 │   ├── DocumentUploadService              # 同步 API 入口（落盘 + document/outbox 原子写入）
 │   ├── IngestionOutboxRepository           # Outbox 入队、SKIP LOCKED 取批与状态更新
 │   ├── IngestionOutboxPublisher            # @Scheduled 发布 Kafka + 退避重试
-│   ├── IngestionConsumer                  # @KafkaListener，三段事务
-│   ├── IngestionStatusService             # markProcessing/markDone/markFailed（独立 bean）
+│   ├── IngestionConsumer                  # @KafkaListener，认领 / 失败编排
+│   ├── IngestionProcessor                 # 行锁下原子写向量、裁剪与 DONE
+│   ├── IngestionStatusService             # markProcessing/markFailed（加锁短事务）
 │   ├── DocumentParserFactory              # PDF/DOCX → Tika，TXT/MD → TextReader
 │   ├── StorageService / LocalStorageService
 │   └── dto/ {IngestionMessage, UploadDocumentResponse}
@@ -270,18 +271,18 @@ rag-admin/src/
   └─ failure: attempt_count+1, next_attempt_at 指数退避, last_error
   ▼
 [IngestionConsumer.consume @KafkaListener]
-  ├─ statusService.markProcessing(docId)         (短事务 1；DONE 则幂等跳过)
-  ├─ ingest(doc, kb)                              (无事务)
+  ├─ statusService.markProcessing(docId)         (短事务 1；行锁；DONE/缺失则跳过)
+  ├─ IngestionProcessor.process(msg)              (事务 2；持有文档行锁)
   │   ├─ parserFactory.create(fileType, filePath).get()  Tika / TextReader
   │   ├─ OverlappingTokenTextSplitter (chunkSize, chunkOverlap)
   │   ├─ 每个 chunk 注入 metadata，并按 docId:chunkIndex 生成确定性 UUID
   │   ├─ vectorStore.add(chunks)                  (稳定 ID upsert)
   │   │   └─ FixedSizeBatchingStrategy.batch(chunks, 10)
   │   │       └─ 每批 ≤10 → embeddingModel.embed → INSERT INTO vector_store
-  │   └─ deleteByDocumentFromIndex(docId, count)  (成功后裁剪旧尾部)
+  │   ├─ deleteByDocumentFromIndex(docId, count)  (成功后裁剪旧尾部)
+  │   └─ status = DONE                            (与向量变更原子提交)
   │
-  ├─ on success: statusService.markDone(docId, count)        (短事务 2)
-  └─ on error  : statusService.markFailed(docId, msg) + throw (短事务 2'，异常向上抛)
+  └─ on error: 事务 2 整体回滚；statusService.markFailed + throw (短事务 3)
 
    [Kafka DefaultErrorHandler] 失败时按 ExponentialBackoff(1s, 2s, 4s) 重试 3 次
    3 次仍失败 → DeadLetterPublishingRecoverer 写入 document.ingestion.dlt
@@ -290,8 +291,9 @@ rag-admin/src/
 **关键设计点**：
 - **事务 Outbox**：上传事务原子写 document 与待发布事件，避免 DB 已提交但 Kafka 消息丢失。
 - **至少一次 + 幂等消费**：发布确认前崩溃可能重复发送；DONE 短路、稳定 chunk ID 与 upsert 后裁剪使重试结果收敛，失败不会先清空旧向量。
-- **删除竞态补偿**：若文档/KB 在处理过程中被删除，最终状态更新返回不存在，consumer 立即清理本次可能写入的向量。
-- **三段事务**：Tika 解析 + embedding HTTP 调用都在事务外执行，不占用 DB 连接。
+- **删除与崩溃安全**：V7 将 metadata 中的文档 ID 映射为生成列并建立 `ON DELETE CASCADE` 外键；处理事务持有文档行锁，删除要么先完成、要么在处理提交后级联清理。
+- **并发串行化**：重复 delivery 在 `findByIdForUpdate` 上串行，后到者在拿锁后看到 `DONE`，不重复 embedding。
+- **处理事务**：parser、embedding HTTP、向量写入和 `DONE` 共用一个事务，以连接与锁持有时间换取 P0 原子性；后续可用 generation/staging 设计缩短事务。
 - **`IngestionStatusService` 独立 bean**：避免 self-invocation 绕过 `@Transactional` AOP 代理（这是上线前修复的一个 showstopper bug）。
 - **FixedSizeBatchingStrategy**：百炼 embedding 单批最多 10 个，默认 `TokenCountBatchingStrategy` 会塞几十个，必败。
 - **DLT**：3 次重试后投递至 dead-letter topic，避免无限重试阻塞分区。
@@ -358,7 +360,7 @@ RetrievalService.search → 返回 List<SearchResultItem>
 
 ## 6. 数据模型
 
-### 6.1 表结构（Flyway V1-V6）
+### 6.1 表结构（Flyway V1-V7）
 
 ```sql
 knowledge_base
@@ -372,8 +374,9 @@ document
   created_at, updated_at
   INDEX (knowledge_base_id)
 
-vector_store              -- Spring AI 标准表（V4 引入）
-  id UUID PK, content TEXT, metadata JSONB, embedding VECTOR(1024)
+vector_store              -- Spring AI 标准表（V4 引入，V7 补文档外键）
+  id UUID PK, content TEXT, metadata JSONB, embedding VECTOR(1024),
+  document_id UUID GENERATED ... REFERENCES document(id) ON DELETE CASCADE
   HNSW INDEX (embedding vector_cosine_ops)
   GIN-style: ((metadata->>'document_id')), ((metadata->>'knowledge_base_id'))
 
@@ -396,10 +399,11 @@ ingestion_outbox          -- V6 引入的事务 Outbox
 
 | 触发 | DB 行为 | 应用补充 |
 |---|---|---|
-| 删除 KB | document、conversation 自动级联删除 | `KnowledgeBaseService.delete` 先收集 file_path 列表 → `vectorStore.delete(by kbId)` → `repository.deleteById` → `storageService.delete(file)` |
-| 删除 Document | （无级联到 vector_store，FK 缺失） | `DocumentService.delete` 先 `chunkQueryService.deleteByDocument` → `documentRepository.delete` → `storageService.delete(filePath)` |
+| 删除 KB | document、conversation、vector_store 自动级联删除 | 收集 file_path，应用层显式清理向量兼容旧数据，再删除 KB 与磁盘文件 |
+| 删除 Document | vector_store 自动级联删除 | 应用层仍显式清理向量兼容旧数据，再删除文档与磁盘文件 |
 
-`vector_store` 与 `document` 之间没有外键（vector_store 是 Spring AI 管理的独立表），所以删除链由应用层显式协调。
+V7 的生成列从 JSONB metadata 提取 `document_id`，因此 PgVectorStore 无需改变 INSERT
+列清单即可获得数据库外键保护；应用层显式删除保留为兼容与快速清理路径。
 
 ### 6.3 元数据约定
 
@@ -421,7 +425,7 @@ ingestion_outbox          -- V6 引入的事务 Outbox
 # 后端
 docker-compose up -d        # 起 PG + Kafka
 export DASHSCOPE_API_KEY=sk-xxx
-mvn spring-boot:run         # Flyway 自动执行 V1-V6
+mvn spring-boot:run         # Flyway 自动执行 V1-V7
 
 # 前端
 cd ../rag-admin
@@ -524,7 +528,7 @@ pnpm dev                    # http://localhost:5173
 | 1 | 用 Kafka 异步摄入（非同步嵌入） | 同步 / RabbitMQ | 单次摄入耗时数秒～数分钟，需要解耦；Kafka 自带 partition + DLT |
 | 2 | pgvector + Spring AI VectorStore（非独立向量库） | Milvus / Qdrant / Pinecone | 单实例规模够用，省一个组件；过滤可下推到 SQL `WHERE` |
 | 3 | Spring AI BatchingStrategy → 自实现 `FixedSizeBatchingStrategy` | 用默认 TokenCountBatchingStrategy | 百炼硬限 batch ≤10，token-based 必败 |
-| 4 | 三段事务摄入（PROCESSING / 处理 / DONE-FAILED） | 单大事务 + Propagation.REQUIRES_NEW | self-invocation 绕过 AOP；连接池占用过长 |
+| 4 | PROCESSING 短事务 + 行锁处理事务 + FAILED 短事务 | 全程无事务 / generation staging | 当前以连接与锁持有时间换取向量和 DONE 的原子性；staging 是后续扩展方向 |
 | 5 | `IngestionStatusService` 独立 `@Service` | `IngestionConsumer` 内部 `@Transactional` 方法 | self-invocation bug |
 | 6 | `vector_store` 独立表（V4） | 自定义 `document_chunk` 复用 PgVectorStore | PgVectorStore 只写 4 列，与自定义 NOT NULL 列冲突，是上线前 showstopper |
 | 7 | `Conversation.@Version` + 滑窗 | 直接锁 / 无锁 | JSONB 行写入并发冲突；历史无限增长导致 token 爆炸 |
@@ -532,6 +536,7 @@ pnpm dev                    # http://localhost:5173
 | 9 | 前后端拆为两个 git repo | monorepo | 团队独立维护，发布节奏不同 |
 | 10 | docker-java/Testcontainers 的 Docker Engine 29 兼容性问题 → 集成测试用本地 docker-compose | 强行 Testcontainers | 等上游修复，临时降级；集成测试覆盖度不变 |
 | 11 | 上传事务 Outbox + Kafka 至少一次投递 | AFTER_COMMIT 事件监听器 / 分布式事务 | 消除提交后发送窗口；用幂等消费承接少量重复消息，复杂度低于 2PC |
+| 12 | vector_store 生成文档列 + FK；处理事务持有文档行锁 | 事后补偿删除 / 仅应用锁 | 覆盖进程崩溃、跨实例并发和删除竞态，不依赖补偿一定执行 |
 
 ---
 

@@ -215,35 +215,33 @@ Hibernate 在 UPDATE 时附带 `WHERE version = ?`；版本不匹配抛 `ObjectO
 ```java
 @Component @RequiredArgsConstructor @Slf4j
 public class IngestionConsumer {
-    private final KnowledgeBaseService kbService;
     private final IngestionStatusService statusService;
-    private final DocumentParserFactory parserFactory;
-    private final VectorStore vectorStore;
-    private final ChunkQueryService chunkQueryService;
+    private final IngestionProcessor processor;
 
     @KafkaListener(topics = "${app.ingestion.topic:document.ingestion}",
                    groupId = "${spring.kafka.consumer.group-id:rag-ingestion}")
-    public void consume(IngestionMessage msg) {                    // 注意：consume 没有 @Transactional
-        Optional<Document> processing = statusService.markProcessing(msg.documentId());
-        if (processing.isEmpty()) return;                           // DONE 消息幂等跳过
-        Document doc = processing.get();
-        KnowledgeBase kb = kbService.getById(msg.knowledgeBaseId());
+    public void consume(IngestionMessage msg) {
+        ProcessingDecision decision = statusService.markProcessing(msg.documentId());
+        if (decision != READY) return;                              // DONE / 已删除幂等跳过
         try {
-            int chunkCount = ingest(doc, kb);                       // 无事务
-            if (!statusService.markDone(doc.getId(), chunkCount)) {
-                chunkQueryService.deleteByDocument(doc.getId());   // 删除竞态补偿
-                return;
-            }
+            processor.process(msg);
         } catch (Exception e) {
-            if (!statusService.markFailed(doc.getId(), e.getMessage())) {
-                chunkQueryService.deleteByDocument(doc.getId());
-                return;
-            }
-            throw e;                                                // 让 Kafka 重试 + DLT
+            statusService.markFailed(msg.documentId(), e.getMessage());
+            throw e;                                               // 让 Kafka 重试 + DLT
         }
     }
+}
 
-    private int ingest(Document doc, KnowledgeBase kb) {
+@Service @RequiredArgsConstructor
+public class IngestionProcessor {
+    @Transactional
+    public Result process(IngestionMessage msg) {
+        Document doc = documentRepository.findByIdForUpdate(msg.documentId())
+            .orElse(null);
+        if (doc == null) return MISSING;
+        if (doc.getStatus() == DONE) return ALREADY_DONE;           // 等待行锁后的二次检查
+        KnowledgeBase kb = doc.getKnowledgeBase();
+
         DocumentReader reader = parserFactory.create(doc.getFileType(), doc.getFilePath());
         var rawDocs = reader.get();
         var splitter = new OverlappingTokenTextSplitter(kb.getChunkSize(), kb.getChunkOverlap());
@@ -255,7 +253,10 @@ public class IngestionConsumer {
         vectorStore.add(indexedChunks);                              // 稳定 ID upsert
         chunkQueryService.deleteByDocumentFromIndex(                 // 成功后裁剪旧尾部
             doc.getId(), indexedChunks.size());
-        return chunks.size();
+        doc.setStatus(DONE);                                         // 与向量写入原子提交
+        doc.setChunkCount(indexedChunks.size());
+        doc.setErrorMessage(null);
+        return COMPLETED;
     }
 }
 ```
@@ -267,13 +268,15 @@ public class IngestionConsumer {
 public class IngestionStatusService {
     private final DocumentRepository documentRepository;
 
-    @Transactional public Optional<Document> markProcessing(UUID id) { ... } // DONE 返回 empty；清除旧 errorMessage
-    @Transactional public boolean markDone(UUID id, int count) { ... }   // 已删除返回 false
-    @Transactional public boolean markFailed(UUID id, String msg) { ... } // DONE 不覆盖，已删除返回 false
+    @Transactional public ProcessingDecision markProcessing(UUID id) { ... }
+    @Transactional public boolean markFailed(UUID id, String msg) { ... }
 }
 ```
 
-依赖 JPA dirty checking：`findById` 返回 managed 实体 → setter 修改 → 事务提交时 Hibernate 自动 flush UPDATE。**没有显式 `save()`** 是有意为之（符合 P3C），见 SYSTEM_ARCHITECTURE.md ADR #5。
+两个方法都通过 `findByIdForUpdate` 获取悲观写锁。`markProcessing` 在短事务中提交
+可观察的 `PROCESSING`；`markFailed` 与处理事务串行，并在看到 `DONE` 时保持成功状态。
+`IngestionProcessor` 再次锁行，将 parser、embedding、向量 upsert/裁剪和 `DONE` 放入
+一个事务，异常时整体回滚。依赖 JPA dirty checking，**没有显式 `save()`** 是有意为之。
 
 ### 3.4 KafkaConfig 重试策略
 
@@ -327,7 +330,8 @@ Outbox 仓储使用 JDBC，因此先 `saveAndFlush` 保证父记录 INSERT 已�
 Outbox 行；二者仍由同一 Spring 事务提交或回滚。
 发布失败保留 `PENDING`，记录 `attempt_count`、`next_attempt_at` 和 `last_error`，按
 2s 起步、最高 300s 的指数退避重试。发布语义为 at-least-once，消费端通过 DONE
-短路、确定性 chunk ID、upsert 后裁剪和删除竞态补偿保证重试幂等。
+短路、文档行锁、确定性 chunk ID 和事务内 upsert 后裁剪保证重试幂等；V7 外键
+阻止已删除文档产生孤儿向量。
 
 ---
 
@@ -754,6 +758,7 @@ springdoc:
 | V4 | `V4__add_vector_store_table.sql` | 建 Spring AI 标准 `vector_store` 表 + HNSW 索引；DROP 原 `document_chunk` |
 | V5 | `V5__add_conversation_version.sql` | `conversation` 加 `version BIGINT NOT NULL DEFAULT 0`（乐观锁） |
 | V6 | `V6__add_ingestion_outbox_and_chunk_uniqueness.sql` | 新增 `ingestion_outbox`；清理重复向量并为 `(document_id, chunk_index)` 建唯一索引 |
+| V7 | `V7__enforce_vector_document_integrity.sql` | 清理孤儿向量；增加生成 `document_id`、文档外键与级联删除 |
 
 **迁移原则**：
 - 单向（不写 down 脚本，prod 走 backup + redeploy）
@@ -777,11 +782,12 @@ springdoc:
 | `RetrievalServiceTest` | unit | recall→rerank→threshold→MMR 全链路；expand-factor、阈值清空、缺 rerank_score |
 | `ChatSseEventsTest` | unit | context/token/done/error 四类帧；流首异常；空流 |
 | `IngestionOutboxPublisherTest` | unit | 发布成功、失败记录与退避重试 |
-| `IngestionConsumerTest` | unit | DONE 幂等跳过、稳定 chunk ID、upsert 后裁剪、失败保留旧向量、删除竞态补偿 |
-| `IngestionStatusServiceTest` | unit | retry 清理旧错误、DONE 不被迟到失败覆盖、删除检测 |
+| `IngestionConsumerTest` | unit | typed claim 编排、DONE/删除跳过、事务失败落库 |
+| `IngestionProcessorTest` | unit | 行锁二次检查、稳定 chunk ID、事务内 upsert/裁剪/完成 |
+| `IngestionStatusServiceTest` | unit | 加锁状态迁移、retry 清理旧错误、DONE 不被迟到失败覆盖 |
 | `DocumentServiceTest` | unit | 文档列表返回持久化的摄入失败原因 |
 | `StartupValidatorTest` | unit | prod profile 占位 key、dev 默认密码、非 prod 跳过、production 别名 |
-| `IngestionConsumerIntegrationTest` | integration | `@SpringBootTest` + 本地 PG/Kafka + WireMock；happy + failure path |
+| `IngestionConsumerIntegrationTest` | integration | 本地 PG/Kafka + WireMock；happy/failure、V7 外键、并发串行、删除竞态 |
 
 总数 ~40 个（参数化展开后更多），CI 时间 ~12s（不含集成测试 5s 额外）。
 

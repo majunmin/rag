@@ -4,7 +4,7 @@
 
 **Goal:** Make chat citations exact, ingestion publication reliable and vector writes idempotent, and align the admin API-key/document contracts with the backend.
 
-**Architecture:** Chat returns a `ChatStream` that carries the retrieval results beside the token flux, and the SSE adapter serializes those exact results before tokens. Upload persists a PostgreSQL outbox row in the document transaction; a scheduled publisher delivers it at least once, while deterministic chunk IDs plus upsert-before-prune make duplicate Kafka delivery harmless without deleting the previous complete set on a failed retry. The React client consumes typed SSE events and applies one shared optional API-key header policy.
+**Architecture:** Chat returns a `ChatStream` that carries the retrieval results beside the token flux, and the SSE adapter serializes those exact results before tokens. Upload persists a PostgreSQL outbox row in the document transaction; a scheduled publisher delivers it at least once. The consumer serializes duplicate work with a document row lock and atomically commits deterministic vector upserts, trailing-chunk pruning, and `DONE`; a vector-to-document foreign key prevents orphan rows. The React client consumes typed SSE events and applies one shared optional API-key header policy.
 
 **Tech Stack:** Java 21, Spring Boot 3.3, Spring AI 1.1.5, Spring Kafka, PostgreSQL/Flyway, JUnit 5/Mockito/Reactor Test, React 19, TypeScript 6, Vitest.
 
@@ -19,6 +19,8 @@ Backend additions:
 - `src/main/java/com/majm/rag/ingestion/IngestionOutboxRepository.java`: transactional SQL operations for enqueue, lock, publish, and retry.
 - `src/main/java/com/majm/rag/ingestion/IngestionOutboxPublisher.java`: scheduled Kafka relay.
 - `src/main/resources/db/migration/V6__add_ingestion_outbox_and_chunk_uniqueness.sql`: outbox schema and chunk uniqueness.
+- `src/main/resources/db/migration/V7__enforce_vector_document_integrity.sql`: generated document ownership column and cascading foreign key.
+- `src/main/java/com/majm/rag/ingestion/IngestionProcessor.java`: row-locked transactional vector processing.
 - `src/test/java/com/majm/rag/ingestion/IngestionOutboxPublisherTest.java`: publisher state-transition tests.
 - `src/test/java/com/majm/rag/ingestion/IngestionConsumerTest.java`: duplicate-delivery and deterministic-ID tests.
 
@@ -328,8 +330,8 @@ git commit -m "feat(ingestion): relay outbox events to kafka"
 
 - [ ] **Step 1: Write failing duplicate and deterministic-ID tests**
 
-For a `DONE` document, make `markProcessing` return `Optional.empty()` and
-verify no parser/vector interactions. For work, capture the list passed to
+For a `DONE` document, make `markProcessing` return `ALREADY_DONE` and verify
+no processor interactions. For work, capture the list passed to
 `vectorStore.add` and assert IDs equal
 `UUID.nameUUIDFromBytes((documentId + ":" + index).getBytes(UTF_8)).toString()`;
 verify `vectorStore.add` occurs before
@@ -351,9 +353,9 @@ operation, and `DocumentListItem` lacks `errorMessage`.
 
 - [ ] **Step 3: Implement idempotent processing**
 
-Change `markProcessing` to `Optional<Document>` and return empty for `DONE`.
-Inject `ChunkQueryService` into the consumer. Before `vectorStore.add`, delete
-vectors for the document and replace each split document with:
+Make `markProcessing` lock the document row and return a typed decision. Move
+parsing and vector writes into a transactional `IngestionProcessor` that locks
+the same row, rechecks `DONE`, and constructs each split document with:
 
 ```java
 String id = UUID.nameUUIDFromBytes(
@@ -362,7 +364,9 @@ Document indexed = new Document(id, chunk.getText(), metadata);
 ```
 
 Preserve all parser metadata before adding knowledge-base, document, name, and
-chunk-index metadata. Add nullable `errorMessage` to `DocumentListItem`.
+chunk-index metadata. Upsert before pruning trailing chunks, then persist
+`DONE` in the same transaction. Add nullable `errorMessage` to
+`DocumentListItem`, and add the V7 vector ownership foreign key.
 
 - [ ] **Step 4: Run focused tests and verify GREEN**
 

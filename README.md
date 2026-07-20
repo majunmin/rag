@@ -130,7 +130,7 @@ rag0429/
 │   ├── application-dev.yml    开发 profile 覆盖
 │   ├── application-prod.yml   生产 profile 覆盖
 │   ├── logback-spring.xml     dev 彩色控制台 / prod JSON
-│   └── db/migration/          Flyway V1-V6
+│   └── db/migration/          Flyway V1-V7
 ├── src/test/java/             单元测试 + 集成测试
 ├── docs/
 │   ├── architecture/          系统架构 + 技术设计
@@ -146,7 +146,7 @@ rag0429/
 ## 数据库 Migration
 
 Flyway 启动时自动执行 `src/main/resources/db/migration/V*.sql`。
-当前到 V6：
+当前到 V7：
 
 | Version | 作用 |
 |---|---|
@@ -156,12 +156,15 @@ Flyway 启动时自动执行 `src/main/resources/db/migration/V*.sql`。
 | V4 | 引入 Spring AI 标准 `vector_store` 表，废弃 document_chunk |
 | V5 | conversation 加 `version BIGINT` 列，启用乐观锁 |
 | V6 | 新增摄入事务 Outbox，并约束同一文档的 chunk 序号唯一 |
+| V7 | 为向量增加文档外键与级联删除，阻止孤儿向量 |
 
 上传事务同时写入 `document` 与 `ingestion_outbox`。后台发布器使用
 `FOR UPDATE SKIP LOCKED` 批量锁定待发布事件，收到 Kafka 确认后标记为
 `PUBLISHED`；失败时记录原因并指数退避重试。Kafka 至少一次投递产生的重复
-消息由消费端幂等处理：已完成文档直接跳过，重试时用确定性 chunk ID 先完成
-upsert，再裁剪已不存在的尾部 chunk，失败时保留上一份完整向量集。
+消息由消费端幂等处理：已完成文档直接跳过；处理事务持有文档行锁，并用确定性
+chunk ID 先完成 upsert、再裁剪旧尾部，向量写入与 `DONE` 状态原子提交。失败时
+事务整体回滚，保留上一份完整向量集。V7 的 `vector_store.document_id` 外键保证
+文档删除会级联清理向量，且已删除文档无法再写入孤儿向量。
 
 ---
 

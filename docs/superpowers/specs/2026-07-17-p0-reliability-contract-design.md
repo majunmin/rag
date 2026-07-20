@@ -104,16 +104,24 @@ then deletes trailing old chunks whose index is outside the new set. A failed
 embedding attempt therefore preserves the previous complete vector set, while
 a successful retry converges without accumulating duplicates.
 
+Migration `V7` adds a generated relational `document_id` column to
+`vector_store` and an `ON DELETE CASCADE` foreign key. The processor locks the
+document row and performs vector upsert, trailing-chunk pruning, and the `DONE`
+transition in one transaction. Concurrent deliveries serialize on that lock;
+the later delivery observes `DONE` and performs no embedding. A process crash
+rolls back vector and status changes together.
+
 If the document is already `DONE`, `markProcessing` reports that no work is
 needed and the consumer acknowledges the duplicate Kafka message without
 parsing or embedding again. Failed attempts still transition the document to
 `FAILED`; a Kafka retry may transition it back to `PROCESSING`.
 
 Deleting a document or knowledge base continues to delete associated vectors
-and files. Its outbox row is removed through a foreign key with `ON DELETE
-CASCADE`, so an unpublished event cannot resurrect deleted data. If deletion
-races with an already-running consumer, final status persistence detects the
-missing document and compensates by deleting vectors written by that attempt.
+and files. Outbox and vector rows are removed through foreign keys with
+`ON DELETE CASCADE`, so an unpublished event cannot resurrect deleted data.
+If deletion races with a running processor, the document row lock serializes
+the operations; deletion either wins before processing starts or cascades the
+atomically committed vector rows afterward.
 
 ### Configuration
 
