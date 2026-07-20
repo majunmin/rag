@@ -257,7 +257,7 @@ rag-admin/src/
   ├─ DocumentUploadService.upload (in @Transactional)
   │   ├─ 校验扩展名（pdf/docx/doc/md/txt 白名单 + 25MB 上限）
   │   ├─ LocalStorageService.store → ~/rag-uploads/<kbId>/<docId>.<ext>  ← 路径用 docId，避免 traversal
-  │   ├─ documentRepository.save(doc, status=PENDING)
+  │   ├─ documentRepository.saveAndFlush(doc, status=PENDING)
   │   └─ outboxRepository.enqueue(docId, kbId)
   ▼
 [Tx commit: document + ingestion_outbox 原子提交]

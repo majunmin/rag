@@ -9,6 +9,7 @@ import com.majm.rag.knowledge.domain.KnowledgeBase;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
+import org.mockito.InOrder;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.mock.web.MockMultipartFile;
@@ -44,7 +45,7 @@ class DocumentUploadServiceTest {
 
         when(kbService.getById(kbId)).thenReturn(kb);
         when(storageService.store(any(), any(), any())).thenReturn("/data/uploads/test.pdf");
-        when(documentRepository.save(any())).thenReturn(savedDoc);
+        when(documentRepository.saveAndFlush(any())).thenReturn(savedDoc);
 
         MockMultipartFile file = new MockMultipartFile("file", "test.pdf",
             "application/pdf", "pdf content".getBytes());
@@ -52,7 +53,9 @@ class DocumentUploadServiceTest {
         UploadDocumentResponse response = uploadService.upload(kbId, file);
 
         assertThat(response.status()).isEqualTo("PENDING");
-        verify(outboxRepository).enqueue(savedDoc.getId(), kbId);
+        InOrder order = inOrder(documentRepository, outboxRepository);
+        order.verify(documentRepository).saveAndFlush(any());
+        order.verify(outboxRepository).enqueue(savedDoc.getId(), kbId);
     }
 
     @Test

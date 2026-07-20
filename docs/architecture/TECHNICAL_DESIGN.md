@@ -291,7 +291,7 @@ public class DocumentUploadService {
     public UploadDocumentResponse upload(UUID kbId, MultipartFile file) {
         validate(file);
         // ... 落盘 ...
-        Document saved = documentRepository.save(doc);
+        Document saved = documentRepository.saveAndFlush(doc);
         outboxRepository.enqueue(saved.getId(), kbId); // 与 document 同一 DB 事务
         return response(saved);
     }
@@ -315,6 +315,8 @@ public class IngestionOutboxPublisher {
 ```
 
 `document` 与 Outbox 事件原子提交，消除了 DB 已提交但 Kafka 发送进程崩溃造成的消息丢失窗口。
+Outbox 仓储使用 JDBC，因此先 `saveAndFlush` 保证父记录 INSERT 已执行，再写带外键的
+Outbox 行；二者仍由同一 Spring 事务提交或回滚。
 发布失败保留 `PENDING`，记录 `attempt_count`、`next_attempt_at` 和 `last_error`，按
 2s 起步、最高 300s 的指数退避重试。发布语义为 at-least-once，消费端通过 DONE
 短路、确定性 chunk ID 和重建前删除保证重试幂等。
