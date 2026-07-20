@@ -111,6 +111,11 @@ transition in one transaction. Concurrent deliveries serialize on that lock;
 the later delivery observes `DONE` and performs no embedding. A process crash
 rolls back vector and status changes together.
 
+Migration `V8` removes pre-P0 vector rows owned by documents that are not
+`DONE`. Those legacy partial rows used random primary keys and would otherwise
+conflict with deterministic retry IDs on the V6 document/chunk unique index.
+Completed documents and their vectors are preserved.
+
 If the document is already `DONE`, `markProcessing` reports that no work is
 needed and the consumer acknowledges the duplicate Kafka message without
 parsing or embedding again. Failed attempts still transition the document to

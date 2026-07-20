@@ -759,6 +759,7 @@ springdoc:
 | V5 | `V5__add_conversation_version.sql` | `conversation` 加 `version BIGINT NOT NULL DEFAULT 0`（乐观锁） |
 | V6 | `V6__add_ingestion_outbox_and_chunk_uniqueness.sql` | 新增 `ingestion_outbox`；清理重复向量并为 `(document_id, chunk_index)` 建唯一索引 |
 | V7 | `V7__enforce_vector_document_integrity.sql` | 清理孤儿向量；增加生成 `document_id`、文档外键与级联删除 |
+| V8 | `V8__remove_partial_legacy_vectors.sql` | 删除非 DONE 文档的旧随机 ID 部分向量，避免确定性 ID 重试冲突 |
 
 **迁移原则**：
 - 单向（不写 down 脚本，prod 走 backup + redeploy）
@@ -788,6 +789,7 @@ springdoc:
 | `DocumentServiceTest` | unit | 文档列表返回持久化的摄入失败原因 |
 | `StartupValidatorTest` | unit | prod profile 占位 key、dev 默认密码、非 prod 跳过、production 别名 |
 | `IngestionConsumerIntegrationTest` | integration | 本地 PG/Kafka + WireMock；happy/failure、V7 外键、并发串行、删除竞态 |
+| `IngestionMigrationIntegrationTest` | integration | 独立 schema 先迁移到 V7 并注入旧数据，再验证 V8 仅清理未完成向量 |
 
 总数 ~40 个（参数化展开后更多），CI 时间 ~12s（不含集成测试 5s 额外）。
 

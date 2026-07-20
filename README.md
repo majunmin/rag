@@ -130,7 +130,7 @@ rag0429/
 │   ├── application-dev.yml    开发 profile 覆盖
 │   ├── application-prod.yml   生产 profile 覆盖
 │   ├── logback-spring.xml     dev 彩色控制台 / prod JSON
-│   └── db/migration/          Flyway V1-V7
+│   └── db/migration/          Flyway V1-V8
 ├── src/test/java/             单元测试 + 集成测试
 ├── docs/
 │   ├── architecture/          系统架构 + 技术设计
@@ -146,7 +146,7 @@ rag0429/
 ## 数据库 Migration
 
 Flyway 启动时自动执行 `src/main/resources/db/migration/V*.sql`。
-当前到 V7：
+当前到 V8：
 
 | Version | 作用 |
 |---|---|
@@ -157,6 +157,7 @@ Flyway 启动时自动执行 `src/main/resources/db/migration/V*.sql`。
 | V5 | conversation 加 `version BIGINT` 列，启用乐观锁 |
 | V6 | 新增摄入事务 Outbox，并约束同一文档的 chunk 序号唯一 |
 | V7 | 为向量增加文档外键与级联删除，阻止孤儿向量 |
+| V8 | 清理未完成文档的旧随机 ID 部分向量，保证升级后可重试 |
 
 上传事务同时写入 `document` 与 `ingestion_outbox`。后台发布器使用
 `FOR UPDATE SKIP LOCKED` 批量锁定待发布事件，收到 Kafka 确认后标记为

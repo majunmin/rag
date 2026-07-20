@@ -360,7 +360,7 @@ RetrievalService.search → 返回 List<SearchResultItem>
 
 ## 6. 数据模型
 
-### 6.1 表结构（Flyway V1-V7）
+### 6.1 表结构（Flyway V1-V8）
 
 ```sql
 knowledge_base
@@ -425,7 +425,7 @@ V7 的生成列从 JSONB metadata 提取 `document_id`，因此 PgVectorStore �
 # 后端
 docker-compose up -d        # 起 PG + Kafka
 export DASHSCOPE_API_KEY=sk-xxx
-mvn spring-boot:run         # Flyway 自动执行 V1-V7
+mvn spring-boot:run         # Flyway 自动执行 V1-V8
 
 # 前端
 cd ../rag-admin

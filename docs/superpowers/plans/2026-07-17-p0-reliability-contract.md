@@ -20,6 +20,7 @@ Backend additions:
 - `src/main/java/com/majm/rag/ingestion/IngestionOutboxPublisher.java`: scheduled Kafka relay.
 - `src/main/resources/db/migration/V6__add_ingestion_outbox_and_chunk_uniqueness.sql`: outbox schema and chunk uniqueness.
 - `src/main/resources/db/migration/V7__enforce_vector_document_integrity.sql`: generated document ownership column and cascading foreign key.
+- `src/main/resources/db/migration/V8__remove_partial_legacy_vectors.sql`: upgrade cleanup for incomplete random-ID vector sets.
 - `src/main/java/com/majm/rag/ingestion/IngestionProcessor.java`: row-locked transactional vector processing.
 - `src/test/java/com/majm/rag/ingestion/IngestionOutboxPublisherTest.java`: publisher state-transition tests.
 - `src/test/java/com/majm/rag/ingestion/IngestionConsumerTest.java`: duplicate-delivery and deterministic-ID tests.
