@@ -28,8 +28,16 @@ public class StartupValidator {
     @Value("${spring.datasource.password:}")
     private String dbPassword;
 
+    @Value("${spring.ai.openai.chat.base-url:${spring.ai.openai.base-url:}}")
+    private String chatBaseUrl;
+
+    @Value("${spring.ai.openai.embedding.base-url:${spring.ai.openai.base-url:}}")
+    private String embeddingBaseUrl;
+
     @PostConstruct
     void validate() {
+        log.info("OpenAI-compatible endpoints: chat={}, embedding={}", chatBaseUrl, embeddingBaseUrl);
+
         boolean isProd = Arrays.stream(environment.getActiveProfiles())
             .map(StringUtils::lowerCase)
             .anyMatch(PROD_PROFILES::contains);

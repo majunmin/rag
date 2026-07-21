@@ -32,15 +32,22 @@ spring:
     consumer:
       group-id: ${KAFKA_CONSUMER_GROUP_ID:rag-ingestion}
       auto-offset-reset: earliest
-      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
-      value-deserializer: org.springframework.kafka.support.serializer.JsonDeserializer
+      key-deserializer: org.springframework.kafka.support.serializer.ErrorHandlingDeserializer
+      value-deserializer: org.springframework.kafka.support.serializer.ErrorHandlingDeserializer
       properties:
-        # Tightened to the single concrete package after security review;
-        # broader 'com.majm.rag.*' was too permissive.
-        spring.json.trusted.packages: "com.majm.rag.ingestion.dto"
+        spring.deserializer.key.delegate.class: org.apache.kafka.common.serialization.StringDeserializer
+        spring.deserializer.value.delegate.class: org.springframework.kafka.support.serializer.JsonDeserializer
+        # document.ingestion carries one schema. Ignore Java type headers so
+        # messages written before a package move remain readable.
+        spring.json.value.default.type: com.majm.rag.ingestion.domain.IngestionMessage
+        spring.json.use.type.headers: false
+        spring.json.trusted.packages: "com.majm.rag.ingestion.domain"
     producer:
       key-serializer: org.apache.kafka.common.serialization.StringSerializer
       value-serializer: org.springframework.kafka.support.serializer.JsonSerializer
+      properties:
+        # Do not couple the durable message contract to a Java package name.
+        spring.json.add.type.headers: false
     listener:
       # Match KafkaConfig#ingestionTopic partitions (3) so all of them are
       # consumed when running a single instance. Multiple instances should
@@ -57,9 +64,15 @@ spring:
       base-url: ${BAILIAN_BASE_URL:https://dashscope.aliyuncs.com/compatible-mode}
       api-key: ${DASHSCOPE_API_KEY:${OPENAI_API_KEY:dummy}}
       chat:
+        base-url: ${BAILIAN_CHAT_BASE_URL:${BAILIAN_BASE_URL:https://dashscope.aliyuncs.com/compatible-mode}}
+        api-key: ${BAILIAN_CHAT_API_KEY:${DASHSCOPE_API_KEY:${OPENAI_API_KEY:dummy}}}
         options:
           model: ${BAILIAN_CHAT_MODEL:qwen-plus}
       embedding:
+        # Chat-only gateways such as /openai/qwen do not expose embeddings.
+        # Keep embedding on a dedicated provider unless explicitly overridden.
+        base-url: ${BAILIAN_EMBEDDING_BASE_URL:https://dashscope.aliyuncs.com/compatible-mode}
+        api-key: ${BAILIAN_EMBEDDING_API_KEY:${DASHSCOPE_API_KEY:${OPENAI_API_KEY:dummy}}}
         options:
           model: ${BAILIAN_EMBEDDING_MODEL:text-embedding-v3}
     ollama:

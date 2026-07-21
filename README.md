@@ -79,6 +79,10 @@ export DASHSCOPE_API_KEY=sk-xxx
 |---|---|---|
 | `DB_URL` / `DB_USERNAME` / `DB_PASSWORD` | prod 必需 | Postgres 连接；prod 拒绝 dev 默认值 `rag` |
 | `DASHSCOPE_API_KEY` | prod 必需 | 百炼 API Key；prod 拒绝 `dummy`/空 |
+| `BAILIAN_BASE_URL` / `BAILIAN_CHAT_BASE_URL` | 否 | Chat 的 OpenAI 兼容网关根地址；末尾 `/v1` 会自动规范化 |
+| `BAILIAN_CHAT_API_KEY` | 否 | Chat 网关独立 Key；默认回退到 `DASHSCOPE_API_KEY` |
+| `BAILIAN_EMBEDDING_BASE_URL` | 否 | Embedding 独立地址，默认 DashScope `compatible-mode`；不要指向仅支持 Chat 的 KAPI `qwen` 路由 |
+| `BAILIAN_EMBEDDING_API_KEY` | 否 | Embedding 独立 Key；默认回退到 `DASHSCOPE_API_KEY` |
 | `KAFKA_BOOTSTRAP_SERVERS` | 否 | 默认 `localhost:9092` |
 | `APP_STORAGE_BASE_PATH` | 否 | 默认 `~/rag-uploads`；Docker 镜像默认 `/app/uploads` |
 | `API_KEY_AUTH_ENABLED` + `API_KEY` | 否 | 启用 `X-API-Key` 鉴权（prod 推荐） |
