@@ -774,8 +774,11 @@ springdoc:
 
 | 测试 | 类型 | 范围 |
 |---|---|---|
-| `DocumentParserFactoryTest` | unit | 文件类型 → reader 选择；URL 分支已删（SSRF 防御） |
-| `DocumentUploadServiceTest` | unit | 校验路径、同事务 Outbox 入队、empty/unsupported 场景 |
+| `DocumentParserFactoryTest` | unit | PDF/Markdown 专用 reader 选择与真实内容提取；URL 延迟委托给网页抓取器 |
+| `DocumentUploadServiceTest` | unit | 文件校验与存储、URL 文档持久化、同事务 Outbox 入队 |
+| `WebUrlPolicyTest` | unit | 协议、凭据、公网 DNS/IP、URL 编码与片段规范化 |
+| `WebPageCrawlerTest` | unit | JsoupDocumentReader 正文/元数据提取、Content-Type/5MiB 限制、重定向逐跳复检 |
+| `WebDocumentServiceTest` | unit | URL 安全校验先于持久化提交 |
 | `ChatServiceTest` | unit | 单轮/多轮检索结果同时用于 prompt 与 SSE context |
 | `KnowledgeBaseServiceTest` | unit | CRUD、ResourceNotFound、delete 路径（磁盘清理 + 缺失 KB 短路） |
 | `FixedSizeBatchingStrategyTest` | unit | 分批边界（整除、余数、空、null、负数、顺序） |
@@ -791,15 +794,16 @@ springdoc:
 | `IngestionConsumerIntegrationTest` | integration | 本地 PG/Kafka + WireMock；happy/failure、V7 外键、并发串行、删除竞态 |
 | `IngestionMigrationIntegrationTest` | integration | 独立 schema 先迁移到 V7 并注入旧数据，再验证 V8 仅清理未完成向量 |
 
-总数 ~40 个（参数化展开后更多），CI 时间 ~12s（不含集成测试 5s 额外）。
+当前完整测试套件共 150 个测试（包含单元测试与本地基础设施集成测试）。
 
 ### 11.2 前端
 
 | 测试 | 类型 | 范围 |
 |---|---|---|
 | `api.client.test.ts` | unit (Vitest) | request 200/204/4xx；streamRequest 单 chunk / 跨 chunk / [DONE]；event 类型路由（token / done / error）；空 token 保留；CRLF；TCP 碎片不挂起 |
+| `document.api.test.ts` | unit (Vitest) | 网页 URL 摄取端点、请求方法与 JSON 请求体 |
 
-总数 12 个。
+当前完整测试套件共 40 个测试。
 
 ### 11.3 集成测试基础设施限制
 
@@ -817,7 +821,7 @@ springdoc:
 |---|---|---|
 | KB CRUD | <50ms | 简单 JPA |
 | 文档上传（API 返回） | <200ms | 落盘 + document/outbox 两次 INSERT；Kafka 异步发布 |
-| 文档摄入（端到端） | 5-30s | 视文档大小，主要花在 Tika + embedding API |
+| 文档摄入（端到端） | 5-30s | 视文档大小，主要花在文档解析 + embedding API |
 | 单次 RAG chat（首 token） | 1-2s | 一次 embedding（query）+ 一次 ANN + LLM TTFT |
 | 单次 RAG chat（完整） | 5-15s | LLM 流式输出长度决定 |
 
@@ -826,7 +830,7 @@ springdoc:
 1. **Embedding API 调用**：百炼批量 ≤10，超过就要多次往返。一个 100 chunk 的文档 = 10 次串行 HTTP 调用。改进：并发批量（Spring AI 不直接支持，需自定义 `EmbeddingModel` 装饰器）。
 2. **Conversation JSONB 全量重写**：每轮对话整列覆写。N 条历史 → O(N) 字节传输。已用滑窗 cap=20 控制总字节量。
 3. **HNSW `ef_search` 默认 40**：大 KB（>10w chunk）召回率会下降。改进：会话级 `SET hnsw.ef_search = 100`。
-4. **Tika 文档解析**：大 PDF 一次性加载内存。文件上限 25MB 已防最坏情况。
+4. **文档解析**：PDF reader 会加载完整 PDF。文件上限 25MB 已限制最坏情况；大文件仍应关注堆内存。
 
 ### 12.3 连接池
 
@@ -912,7 +916,8 @@ Spring Boot:  3.3.5
 Spring AI:    1.1.5
 PostgreSQL:   18 + pgvector
 Kafka:        3.8.0
-Tika:         3.1.0
+Spring AI Readers: 1.1.5
+Tika:             3.3.0
 ```
 
 发布前验证命令：

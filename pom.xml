@@ -70,6 +70,18 @@
             <groupId>org.springframework.ai</groupId>
             <artifactId>spring-ai-tika-document-reader</artifactId>
         </dependency>
+        <dependency>
+            <groupId>org.springframework.ai</groupId>
+            <artifactId>spring-ai-pdf-document-reader</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.ai</groupId>
+            <artifactId>spring-ai-markdown-document-reader</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.ai</groupId>
+            <artifactId>spring-ai-jsoup-document-reader</artifactId>
+        </dependency>
 
         <!-- Database -->
         <dependency>
@@ -107,12 +119,13 @@
         </dependency>
 
         <!-- Apache Commons utilities — defensive null/blank/empty handling.
-             commons-lang3 is managed by Spring Boot. The other two need explicit
-             versions; pinning them here makes the dependency declaration
-             survive Tika version bumps that might drop the transitive. -->
+             Tika 3.3.0 requires commons-lang3 3.20.0; Spring Boot 3.3.5 manages
+             an older binary-incompatible version. The other two are also pinned
+             so these declarations survive Tika dependency changes. -->
         <dependency>
             <groupId>org.apache.commons</groupId>
             <artifactId>commons-lang3</artifactId>
+            <version>3.20.0</version>
         </dependency>
         <dependency>
             <groupId>org.apache.commons</groupId>

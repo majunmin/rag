@@ -8,7 +8,7 @@
 
 ## 1. 系统定位
 
-为内部团队提供基于检索增强生成（RAG, Retrieval-Augmented Generation）的知识库问答能力。用户上传文档（PDF / DOCX / TXT / MD），系统切分为 chunk，调用 embedding 模型向量化后存入 pgvector；提问时以语义相似度召回相关 chunk，连同问题一起送入 LLM 生成答案，支持多轮对话。
+为内部团队提供基于检索增强生成（RAG, Retrieval-Augmented Generation）的知识库问答能力。用户可上传文档（PDF / DOCX / TXT / MD）或提交公开网页 URL，系统提取正文并切分为 chunk，调用 embedding 模型向量化后存入 pgvector；提问时以语义相似度召回相关 chunk，连同问题一起送入 LLM 生成答案，支持多轮对话。
 
 **典型场景**：内部产品手册问答、API 文档检索、运维 runbook 助手。
 
@@ -135,7 +135,7 @@
 | 数据访问 | Spring Data JPA / Hibernate 6 + JdbcTemplate | 6.5.3 |
 | 数据库迁移 | Flyway | 10.10.0 |
 | 消息中间件 | Apache Kafka + Spring Kafka | 3.7 / 3.2.4 |
-| 文档解析 | Apache Tika | 3.1.0 |
+| 文档解析 | Spring AI PDF / Markdown / Jsoup Reader + Apache Tika | 1.1.5 / 3.3.0 |
 | 文本切分 | Spring AI TokenTextSplitter | — |
 | 可观测性 | Spring Boot Actuator + Micrometer | — |
 | 构建 | Maven | — |
@@ -196,7 +196,7 @@ com.majm.rag/
 │   ├── IngestionConsumer                  # @KafkaListener，认领 / 失败编排
 │   ├── IngestionProcessor                 # 行锁下原子写向量、裁剪与 DONE
 │   ├── IngestionStatusService             # markProcessing/markFailed（加锁短事务）
-│   ├── DocumentParserFactory              # PDF/DOCX → Tika，TXT/MD → TextReader
+│   ├── DocumentParserFactory              # PDF/MD → 专用 Reader，DOCX → Tika，TXT → TextReader
 │   ├── StorageService / LocalStorageService
 │   └── dto/ {IngestionMessage, UploadDocumentResponse}
 │
@@ -238,7 +238,7 @@ rag-admin/src/
 ├── layouts/AppLayout.tsx # 侧边栏 + 顶栏 + /api/actuator/health 30s 轮询
 ├── pages/
 │   ├── knowledge-base/   # 列表 + 创建/编辑 Modal
-│   ├── document/         # 上传（Dragger）+ 列表 + ChunkDrawer + ErrorModal
+│   ├── document/         # 文件上传/网页 URL + 列表 + ChunkDrawer + ErrorModal
 │   └── chat/             # KB 选择 + 消息流 + topK 调节 + 多/单轮切换 + ChunkContextDrawer
 ├── types/api.ts          # 后端 DTO 镜像类型
 └── test/                 # Vitest（client.ts 单测，覆盖 SSE 跨 chunk 缓冲）
@@ -252,14 +252,18 @@ rag-admin/src/
 
 ```
 [用户]
-  │ POST /api/v1/knowledge-bases/{kbId}/documents (multipart)
+  ├─ 文件: POST /api/v1/knowledge-bases/{kbId}/documents (multipart)
+  └─ 网页: POST /api/v1/knowledge-bases/{kbId}/documents/url ({url})
   ▼
-[DocumentController.upload]
-  ├─ DocumentUploadService.upload (in @Transactional)
+[DocumentController]
+  ├─ 文件: DocumentUploadService.upload (in @Transactional)
   │   ├─ 校验扩展名（pdf/docx/doc/md/txt 白名单 + 25MB 上限）
-  │   ├─ LocalStorageService.store → ~/rag-uploads/<kbId>/<docId>.<ext>  ← 路径用 docId，避免 traversal
-  │   ├─ documentRepository.saveAndFlush(doc, status=PENDING)
-  │   └─ outboxRepository.enqueue(docId, kbId)
+  │   └─ LocalStorageService.store → ~/rag-uploads/<kbId>/<docId>.<ext>  ← 路径用 docId，避免 traversal
+  ├─ 网页: WebDocumentService.submit
+  │   ├─ WebUrlPolicy 校验公网 http/https 地址（DNS、凭据、片段）
+  │   └─ DocumentUploadService.submitUrl (in @Transactional，不落本地文件)
+  ├─ documentRepository.saveAndFlush(doc, status=PENDING)
+  └─ outboxRepository.enqueue(docId, kbId)
   ▼
 [Tx commit: document + ingestion_outbox 原子提交]
   │ ─────── (response 202 Accepted to user) ───────
@@ -273,7 +277,11 @@ rag-admin/src/
 [IngestionConsumer.consume @KafkaListener]
   ├─ statusService.markProcessing(docId)         (短事务 1；行锁；DONE/缺失则跳过)
   ├─ IngestionProcessor.process(msg)              (事务 2；持有文档行锁)
-  │   ├─ parserFactory.create(fileType, filePath).get()  Tika / TextReader
+  │   ├─ parserFactory.create(fileType, filePath).get()
+  │   │   ├─ PDF: PagePdfDocumentReader（按页提取并保留页码 metadata）
+  │   │   ├─ Markdown: MarkdownDocumentReader（保留代码块与引用）
+  │   │   ├─ DOCX / TXT: TikaDocumentReader / TextReader
+  │   │   └─ URL: WebPageCrawler（安全下载后交给 JsoupDocumentReader 提取正文）
   │   ├─ OverlappingTokenTextSplitter (chunkSize, chunkOverlap)
   │   ├─ 每个 chunk 注入 metadata，并按 docId:chunkIndex 生成确定性 UUID
   │   ├─ vectorStore.add(chunks)                  (稳定 ID upsert)
@@ -297,6 +305,7 @@ rag-admin/src/
 - **`IngestionStatusService` 独立 bean**：避免 self-invocation 绕过 `@Transactional` AOP 代理（这是上线前修复的一个 showstopper bug）。
 - **FixedSizeBatchingStrategy**：百炼 embedding 单批最多 10 个，默认 `TokenCountBatchingStrategy` 会塞几十个，必败。
 - **DLT**：3 次重试后投递至 dead-letter topic，避免无限重试阻塞分区。
+- **网页抓取边界**：只抓取提交的单个页面，不递归跟踪链接；仅接受公网 HTML，重定向目标也必须通过相同 URL 策略。
 
 ### 5.2 多轮对话（SSE 流式）
 
@@ -510,7 +519,7 @@ pnpm dev                    # http://localhost:5173
 |---|---|
 | 路径穿越 (`getOriginalFilename`) | 磁盘命名固定为 `<docId>.<ext>`，原名只入 DB |
 | 上传 DoS | `max-file-size=25MB`，扩展名白名单，未来加 MIME 嗅探 |
-| SSRF (Tika URL fetch) | 已删 `URL` 分支 |
+| SSRF（网页抓取） | 仅允许公网 `http/https`；拒绝凭据、环回/私网/链路本地等地址；每次重定向重新校验；Spring AI reader 只读取下载后的内存资源，不直接打开用户 URL |
 | SQL 注入 | JPA / 参数化 SQL，全部用 `?` 占位 |
 | 凭证泄漏 | `application.yml` 默认值仅 dev 可用；prod `StartupValidator` fail-fast |
 | 错误信息泄漏 | `GlobalExceptionHandler` 仅返 traceId，详情写日志 |

@@ -26,6 +26,7 @@ public interface DocumentRepository extends JpaRepository<Document, UUID> {
      * Used by KnowledgeBaseService.delete to clean up files after the DB CASCADE
      * removes the rows.
      */
-    @Query("SELECT d.filePath FROM Document d WHERE d.knowledgeBase.id = :kbId AND d.filePath IS NOT NULL")
+    @Query("SELECT d.filePath FROM Document d WHERE d.knowledgeBase.id = :kbId "
+        + "AND d.filePath IS NOT NULL AND UPPER(d.fileType) <> 'URL'")
     List<String> findFilePathsByKnowledgeBaseId(@Param("kbId") UUID kbId);
 }

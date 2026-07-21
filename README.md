@@ -17,7 +17,7 @@
 | 数据库 | PostgreSQL 18 + pgvector |
 | 消息队列 | Apache Kafka 3.8 (KRaft) |
 | LLM 服务 | 阿里云百炼 (DashScope) — `qwen-plus` + `text-embedding-v3` |
-| 文档解析 | Apache Tika 3.1 |
+| 文档解析 | Spring AI Document Readers 1.1.5 + Apache Tika 3.3 |
 | 构建 | Maven 3.9 + Maven Wrapper |
 | 容器 | Docker (multi-stage Alpine) |
 
@@ -176,6 +176,7 @@ chunk ID 先完成 upsert、再裁剪旧尾部，向量写入与 `DONE` 状态�
 | Knowledge Base | `GET/POST/PUT/DELETE /api/v1/knowledge-bases[/{id}]` |
 | 语义检索 | `POST /api/v1/knowledge-bases/{kbId}/search` |
 | Document | `POST/GET/DELETE /api/v1/knowledge-bases/{kbId}/documents[/{docId}]` |
+| 网页摄取 | `POST /api/v1/knowledge-bases/{kbId}/documents/url` |
 | Document Chunks | `GET /api/v1/knowledge-bases/{kbId}/documents/{docId}/chunks` |
 | Chat (单轮 SSE) | `POST /api/v1/chat` |
 | Conversation | `POST /api/v1/chat/conversations` |
@@ -183,6 +184,11 @@ chunk ID 先完成 upsert、再裁剪旧尾部，向量写入与 `DONE` 状态�
 | Health | `GET /api/actuator/health{,/liveness,/readiness}` |
 
 详见 Swagger UI 或 [`docs/architecture/TECHNICAL_DESIGN.md`](docs/architecture/TECHNICAL_DESIGN.md)。
+
+网页摄取请求体为 `{ "url": "https://example.com/article" }`。接口创建异步摄取任务，
+Kafka 消费端抓取单个网页并用 Spring AI `JsoupDocumentReader` 提取可见正文；不会递归跟踪页面中的链接。仅允许
+公网 `http/https` 地址，每次重定向都会重新校验目标；响应必须是 HTML，正文上限为
+5 MiB，连接和读取均设置超时。localhost、私网、链路本地、带凭据的 URL 会被拒绝。
 
 Chat SSE 首帧为 `context`（本次实际送入 LLM 的 `SearchResultItem[]`），随后是
 `token`，并以 `done` 或结构化 `error` 结束。客户端无需在流结束后再次调用

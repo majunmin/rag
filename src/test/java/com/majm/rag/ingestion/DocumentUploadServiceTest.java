@@ -11,10 +11,12 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.InOrder;
 import org.mockito.Mock;
+import org.mockito.ArgumentCaptor;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.mock.web.MockMultipartFile;
 
 import java.util.UUID;
+import java.net.URI;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -66,6 +68,27 @@ class DocumentUploadServiceTest {
 
         assertThatThrownBy(() -> uploadService.upload(kbId, empty))
             .isInstanceOf(IllegalArgumentException.class);
+    }
+
+    @Test
+    void submitUrl_shouldCreateUrlDocumentAndEnqueueOutboxEvent() {
+        UUID kbId = UUID.randomUUID();
+        KnowledgeBase kb = new KnowledgeBase();
+        kb.setId(kbId);
+        when(kbService.getById(kbId)).thenReturn(kb);
+        when(documentRepository.saveAndFlush(any())).thenAnswer(invocation -> invocation.getArgument(0));
+
+        UploadDocumentResponse response = uploadService.submitUrl(
+            kbId, URI.create("https://example.com/guide"));
+
+        ArgumentCaptor<Document> document = ArgumentCaptor.forClass(Document.class);
+        verify(documentRepository).saveAndFlush(document.capture());
+        assertThat(document.getValue().getName()).isEqualTo("https://example.com/guide");
+        assertThat(document.getValue().getFileType()).isEqualTo("URL");
+        assertThat(document.getValue().getFilePath()).isEqualTo("https://example.com/guide");
+        verify(storageService, never()).store(any(), any(), any());
+        verify(outboxRepository).enqueue(document.getValue().getId(), kbId);
+        assertThat(response.status()).isEqualTo("PENDING");
     }
 
     @Test

@@ -51,7 +51,7 @@ public class DocumentService {
         chunkQueryService.deleteByDocument(docId);
         documentRepository.delete(doc);
 
-        if (StringUtils.isNotBlank(filePath)) {
+        if (StringUtils.isNotBlank(filePath) && !"URL".equalsIgnoreCase(doc.getFileType())) {
             storageService.delete(filePath);
         }
     }

@@ -3,6 +3,7 @@ package com.majm.rag.knowledge;
 import com.majm.rag.ingestion.StorageService;
 import com.majm.rag.knowledge.domain.Document;
 import com.majm.rag.knowledge.domain.DocumentStatus;
+import com.majm.rag.knowledge.domain.KnowledgeBase;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
@@ -12,10 +13,13 @@ import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.PageRequest;
 
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
 
 @ExtendWith(MockitoExtension.class)
 class DocumentServiceTest {
@@ -44,5 +48,25 @@ class DocumentServiceTest {
             documentService.list(knowledgeBaseId, page).getContent().getFirst();
 
         assertThat(item.errorMessage()).isEqualTo("embedding provider unavailable");
+    }
+
+    @Test
+    void delete_urlDocumentDoesNotDeleteRemoteSourceAsLocalFile() {
+        UUID knowledgeBaseId = UUID.randomUUID();
+        UUID documentId = UUID.randomUUID();
+        KnowledgeBase knowledgeBase = new KnowledgeBase();
+        knowledgeBase.setId(knowledgeBaseId);
+        Document document = new Document();
+        document.setId(documentId);
+        document.setKnowledgeBase(knowledgeBase);
+        document.setFileType("URL");
+        document.setFilePath("https://example.com/guide");
+        when(documentRepository.findById(documentId)).thenReturn(Optional.of(document));
+
+        documentService.delete(knowledgeBaseId, documentId);
+
+        verify(chunkQueryService).deleteByDocument(documentId);
+        verify(documentRepository).delete(document);
+        verify(storageService, never()).delete("https://example.com/guide");
     }
 }

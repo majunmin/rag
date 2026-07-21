@@ -12,6 +12,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
 
+import java.net.URI;
 import java.util.Set;
 import java.util.UUID;
 
@@ -43,10 +44,32 @@ public class DocumentUploadService {
         doc.setFilePath(path);
         // The outbox repository uses JDBC directly, so flush the JPA insert
         // before its foreign key is checked within the same transaction.
+        return saveAndEnqueue(doc, knowledgeBaseId);
+    }
+
+    @Transactional
+    public UploadDocumentResponse submitUrl(UUID knowledgeBaseId, URI url) {
+        if (url == null) {
+            throw new IllegalArgumentException("URL is required");
+        }
+        String source = url.toASCIIString();
+        if (source.length() > 1024) {
+            throw new IllegalArgumentException("URL is too long");
+        }
+
+        KnowledgeBase kb = kbService.getById(knowledgeBaseId);
+        Document doc = new Document();
+        doc.setId(UUID.randomUUID());
+        doc.setKnowledgeBase(kb);
+        doc.setName(StringUtils.abbreviate(source, 255));
+        doc.setFileType("URL");
+        doc.setFilePath(source);
+        return saveAndEnqueue(doc, knowledgeBaseId);
+    }
+
+    private UploadDocumentResponse saveAndEnqueue(Document doc, UUID knowledgeBaseId) {
         Document savedDoc = documentRepository.saveAndFlush(doc);
-
         outboxRepository.enqueue(savedDoc.getId(), knowledgeBaseId);
-
         return new UploadDocumentResponse(savedDoc.getId(), savedDoc.getName(),
             savedDoc.getStatus().name());
     }

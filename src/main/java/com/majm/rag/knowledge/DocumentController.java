@@ -1,10 +1,13 @@
 package com.majm.rag.knowledge;
 
 import com.majm.rag.ingestion.DocumentUploadService;
+import com.majm.rag.ingestion.WebDocumentService;
+import com.majm.rag.ingestion.dto.CreateWebDocumentRequest;
 import com.majm.rag.ingestion.dto.UploadDocumentResponse;
 import com.majm.rag.knowledge.dto.DocumentChunkResponse;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -14,6 +17,7 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.multipart.MultipartFile;
@@ -28,6 +32,7 @@ import java.util.UUID;
 public class DocumentController {
 
     private final DocumentUploadService uploadService;
+    private final WebDocumentService webDocumentService;
     private final DocumentService documentService;
 
     @Operation(summary = "Upload a document (async ingestion via Kafka). Returns 202 Accepted.")
@@ -35,6 +40,13 @@ public class DocumentController {
     public ResponseEntity<UploadDocumentResponse> upload(@PathVariable UUID kbId,
                                                           @RequestParam("file") MultipartFile file) {
         return ResponseEntity.accepted().body(uploadService.upload(kbId, file));
+    }
+
+    @Operation(summary = "Crawl a web page and ingest its readable content asynchronously")
+    @PostMapping("/url")
+    public ResponseEntity<UploadDocumentResponse> submitUrl(
+        @PathVariable UUID kbId, @Valid @RequestBody CreateWebDocumentRequest request) {
+        return ResponseEntity.accepted().body(webDocumentService.submit(kbId, request.url()));
     }
 
     @Operation(summary = "List documents in a knowledge base (paginated)")
