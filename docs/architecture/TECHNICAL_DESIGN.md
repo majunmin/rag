@@ -2,16 +2,30 @@
 
 **配套文档**: `SYSTEM_ARCHITECTURE.md`
 **目标读者**: 接手开发、做扩展、做改造的工程师
-**最后更新**: 2026-07-20
+**最后更新**: 2026-07-21
 
 ---
 
 ## 0. 文档约定
 
-- 所有 Java 路径相对 `rag0429/src/main/java/com/majm/rag/`
-- 所有 SQL 在 `rag0429/src/main/resources/db/migration/`
+- Java 代码按 Maven 模块存放：`rag-*/src/main/java/com/majm/rag/`
+- 所有 SQL 在 `rag-app/src/main/resources/db/migration/`
 - 前端路径相对 `rag-admin/src/`
 - 代码片段截取核心；完整请看 git
+
+### 0.1 模块与依赖方向
+
+| 模块 | 职责 | 允许依赖 |
+|---|---|---|
+| `rag-common` | 错误契约、通用异常 | 无业务模块 |
+| `rag-knowledge` | 知识库/文档领域、应用服务、持久化 | `rag-common` |
+| `rag-ingestion` | 文件/网页摄取、解析、Outbox、Kafka | `rag-knowledge` |
+| `rag-retrieval` | 召回、查询改写、重排、检索 API | 无业务模块 |
+| `rag-chat` | 对话、SSE、会话持久化 | `rag-common`、`rag-retrieval` |
+| `rag-app` | 启动、共享 Bean、配置、迁移、集成测试 | 所有业务模块 |
+
+模块内部统一使用 `api / application / domain / infrastructure / config`
+分包。下层模块不得导入上层模块；该约束由 Maven 子模块的编译类路径保证。
 
 ---
 

@@ -2,7 +2,7 @@
 
 **项目**: RAG 知识库系统（rag0429 后端 + rag-admin 前端）
 **版本**: 0.0.1-SNAPSHOT，预上线状态
-**最后更新**: 2026-07-20
+**最后更新**: 2026-07-21
 
 ---
 
@@ -130,13 +130,13 @@
 |---|---|---|
 | 语言 | Java | 21 |
 | 框架 | Spring Boot | 3.3.5 |
-| AI 框架 | Spring AI | 1.0.0 |
+| AI 框架 | Spring AI | 1.1.5 |
 | Web | Spring MVC（同步）+ Reactor Flux（SSE 流式） | 6.1.x / 3.6.x |
 | 数据访问 | Spring Data JPA / Hibernate 6 + JdbcTemplate | 6.5.3 |
 | 数据库迁移 | Flyway | 10.10.0 |
 | 消息中间件 | Apache Kafka + Spring Kafka | 3.7 / 3.2.4 |
 | 文档解析 | Spring AI PDF / Markdown / Jsoup Reader + Apache Tika | 1.1.5 / 3.3.0 |
-| 文本切分 | Spring AI TokenTextSplitter | — |
+| 文本切分 | 自定义 OverlappingTokenTextSplitter（cl100k_base） | — |
 | 可观测性 | Spring Boot Actuator + Micrometer | — |
 | 构建 | Maven | — |
 
@@ -166,61 +166,40 @@
 
 ### 4.1 后端模块
 
-包结构按"功能域 + 横切层"划分：
+后端采用 Maven 多模块的模块化单体。各业务模块可独立编译和测试，最终由
+`rag-app` 组装为一个 Spring Boot 进程：
 
 ```
-com.majm.rag/
-├── chat/                  # 对话域：单轮 + 多轮 SSE
-│   ├── ChatController
-│   ├── ChatService
-│   ├── ConversationPersistenceService     # 解决 self-invocation 的独立 @Service
-│   ├── ConversationRepository
-│   ├── domain/Conversation                # @Version 乐观锁
-│   └── dto/ {ChatRequest, ConversationMessageRequest, CreateConversationRequest, ConversationResponse}
-│
-├── knowledge/             # 知识库 + 文档域
-│   ├── controller/
-│   │   ├── KnowledgeBaseController        # KB CRUD + /search
-│   │   └── DocumentController              # 上传 / 列表 / 删除 / chunks
-│   ├── KnowledgeBaseService
-│   ├── DocumentService                    # 抽取自原 Controller，统一事务边界
-│   ├── ChunkQueryService                  # 通过 JdbcTemplate 查 vector_store
-│   ├── KnowledgeBaseRepository / DocumentRepository
-│   ├── domain/ {KnowledgeBase, Document, *Status}
-│   └── dto/ {Create*, Update*, *Response, SearchKnowledgeBaseRequest, ...}
-│
-├── ingestion/             # 摄入域：上传 → Outbox → Kafka → 解析 → embedding
-│   ├── DocumentUploadService              # 同步 API 入口（落盘 + document/outbox 原子写入）
-│   ├── IngestionOutboxRepository           # Outbox 入队、SKIP LOCKED 取批与状态更新
-│   ├── IngestionOutboxPublisher            # @Scheduled 发布 Kafka + 退避重试
-│   ├── IngestionConsumer                  # @KafkaListener，认领 / 失败编排
-│   ├── IngestionProcessor                 # 行锁下原子写向量、裁剪与 DONE
-│   ├── IngestionStatusService             # markProcessing/markFailed（加锁短事务）
-│   ├── DocumentParserFactory              # PDF/MD → 专用 Reader，DOCX → Tika，TXT → TextReader
-│   ├── StorageService / LocalStorageService
-│   └── dto/ {IngestionMessage, UploadDocumentResponse}
-│
-├── retrieval/             # 检索域
-│   ├── RetrievalService                   # vectorStore.similaritySearch + KB 过滤 + topK 钳制
-│   └── RetrievalLimits                    # DEFAULT_TOP_K=5, MAX_TOP_K=50
-│
-├── config/                # 横切配置
-│   ├── KafkaConfig                        # 主 topic + DLT + 退避重试
-│   ├── LlmConfig                          # ChatClient bean
-│   ├── VectorStoreConfig                  # PgVectorStore + FixedSizeBatchingStrategy
-│   ├── FixedSizeBatchingStrategy          # 解决 DashScope batch size <= 10 限制
-│   ├── OpenApiConfig                      # springdoc-openapi
-│   ├── CorsConfig                         # 仅 dev 放开 localhost:*
-│   ├── ApiKeyFilter                       # 可选 X-API-Key 过滤
-│   └── StartupValidator                   # prod 下强制非占位 API key / DB password
-│
-└── common/                # 错误响应与跨域异常
-    ├── GlobalExceptionHandler             # ResourceNotFound 404 / IAE 400 / Validation 400
-                                            # MaxUpload 413 / DataIntegrity 409 / OptLock 409
-                                            # Exception 500（traceId, 不漏栈）
-    ├── dto/ErrorResponse                  # {code, message, timestamp, traceId, fieldErrors[]}
-    └── exception/ResourceNotFoundException
+rag-parent
+├── rag-common        # 统一错误响应与跨模块异常
+├── rag-knowledge     # 知识库、文档领域及持久化
+├── rag-ingestion     # 文件/网页摄取、解析、Outbox、Kafka
+├── rag-retrieval     # 向量召回、查询改写、重排与搜索 API
+├── rag-chat          # 对话、SSE 与会话持久化
+└── rag-app           # 启动类、共享配置、Flyway、集成测试
 ```
+
+依赖关系保持单向：
+
+```text
+rag-app ─┬─> rag-chat ─> rag-retrieval
+         ├─> rag-ingestion ─> rag-knowledge ─> rag-common
+         ├─> rag-retrieval
+         └─> rag-knowledge
+```
+
+业务模块内部使用统一包约定：
+
+- `api`：Controller 和对外 DTO。
+- `application`：用例编排和事务边界；`application.port` 定义跨层端口。
+- `domain`：实体、值对象和领域状态。
+- `infrastructure`：JPA/JDBC、Kafka、存储、文档解析等技术实现。
+- `config`：只放模块私有配置；跨模块 Bean 在 `rag-app/config` 组装。
+
+`StorageService` 端口由 `rag-knowledge` 定义、`rag-ingestion` 的
+`LocalStorageService` 实现，因此删除知识库/文档无需反向依赖摄取模块。
+搜索端点归 `rag-retrieval`，文档端点归 `rag-ingestion`，避免 Controller
+跨域反向引用。
 
 ### 4.2 前端模块
 
@@ -434,7 +413,7 @@ V7 的生成列从 JSONB metadata 提取 `document_id`，因此 PgVectorStore �
 # 后端
 docker-compose up -d        # 起 PG + Kafka
 export DASHSCOPE_API_KEY=sk-xxx
-mvn spring-boot:run         # Flyway 自动执行 V1-V8
+./mvnw -pl rag-app -am spring-boot:run  # Flyway 自动执行 V1-V8
 
 # 前端
 cd ../rag-admin
@@ -442,7 +421,7 @@ pnpm install
 pnpm dev                    # http://localhost:5173
 ```
 
-### 7.2 关键配置（`application.yml`）
+### 7.2 关键配置（`rag-app/src/main/resources/application.yml`）
 
 | 配置项 | 默认 | 说明 |
 |---|---|---|

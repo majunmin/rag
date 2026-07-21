@@ -21,7 +21,8 @@
 | 构建 | Maven 3.9 + Maven Wrapper |
 | 容器 | Docker (multi-stage Alpine) |
 
-详细架构与设计：见 [`docs/architecture/`](docs/architecture/)。
+详细架构与设计：见 [`docs/architecture/`](docs/architecture/)，模块开发规则见
+[`MODULE_GUIDE.md`](docs/architecture/MODULE_GUIDE.md)。
 
 ---
 
@@ -43,7 +44,7 @@ docker compose up -d
 export DASHSCOPE_API_KEY=sk-xxx
 
 # 3. 启动后端（默认 dev profile）
-./mvnw spring-boot:run
+./mvnw -pl rag-app -am spring-boot:run
 ```
 
 成功后：
@@ -87,7 +88,7 @@ export DASHSCOPE_API_KEY=sk-xxx
 | `APP_INGESTION_OUTBOX_BATCH_SIZE` | 否 | 每次锁定并发布的 Outbox 事件数，默认 20，范围 1-100 |
 | `APP_INGESTION_OUTBOX_SEND_TIMEOUT_MS` | 否 | 单条 Kafka 发送确认超时，默认 10000ms |
 
-完整列表：见 [`src/main/resources/application.yml`](src/main/resources/application.yml)
+完整列表：见 [`rag-app/src/main/resources/application.yml`](rag-app/src/main/resources/application.yml)
 和 [`docs/architecture/TECHNICAL_DESIGN.md`](docs/architecture/TECHNICAL_DESIGN.md)。
 
 ---
@@ -118,20 +119,13 @@ docker run --rm -p 8080:8080 \
 
 ```
 rag0429/
-├── src/main/java/com/majm/rag/
-│   ├── chat/                  对话域（SSE 流式 + 多轮）
-│   ├── knowledge/             知识库 + 文档 CRUD + 检索
-│   ├── ingestion/             文档摄入流水线（Kafka 异步）
-│   ├── retrieval/             向量检索封装
-│   ├── config/                跨切配置（Kafka, VectorStore, Cors, ApiKey, ...）
-│   └── common/                统一异常处理 + ErrorResponse
-├── src/main/resources/
-│   ├── application.yml        共用配置
-│   ├── application-dev.yml    开发 profile 覆盖
-│   ├── application-prod.yml   生产 profile 覆盖
-│   ├── logback-spring.xml     dev 彩色控制台 / prod JSON
-│   └── db/migration/          Flyway V1-V8
-├── src/test/java/             单元测试 + 集成测试
+├── rag-common/                统一错误契约与跨模块异常
+├── rag-knowledge/             知识库、文档领域模型与持久化
+├── rag-ingestion/             上传、网页抓取、Outbox、Kafka 与解析流水线
+├── rag-retrieval/             向量召回、查询改写、重排与检索 API
+├── rag-chat/                  单轮/多轮对话与 SSE 输出
+├── rag-app/                   Spring Boot 启动、共享配置、Flyway 与集成测试
+│   └── src/main/resources/    application 配置、日志与 db/migration
 ├── docs/
 │   ├── architecture/          系统架构 + 技术设计
 │   └── superpowers/           历史规划与设计稿
@@ -141,11 +135,24 @@ rag0429/
 └── pom.xml
 ```
 
+模块依赖保持单向：
+
+```text
+rag-app ─┬─> rag-chat ─> rag-retrieval
+         ├─> rag-ingestion ─> rag-knowledge ─> rag-common
+         ├─> rag-retrieval
+         └─> rag-knowledge
+```
+
+业务模块内部按 `api / application / domain / infrastructure / config`
+分包。`rag-app` 只负责组装和运行，不承载业务规则；模块之间通过 Maven
+依赖约束编译边界，禁止形成循环依赖。
+
 ---
 
 ## 数据库 Migration
 
-Flyway 启动时自动执行 `src/main/resources/db/migration/V*.sql`。
+Flyway 启动时自动执行 `rag-app/src/main/resources/db/migration/V*.sql`。
 当前到 V8：
 
 | Version | 作用 |

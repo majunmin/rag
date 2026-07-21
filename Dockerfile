@@ -7,17 +7,29 @@ FROM eclipse-temurin:21-jdk-alpine AS build
 
 WORKDIR /workspace
 
-# Cache deps: copy only Maven config first; then run go-offline
+# Cache dependencies: copy only Maven descriptors first.
 COPY .mvn .mvn
 COPY mvnw pom.xml ./
+COPY rag-common/pom.xml rag-common/pom.xml
+COPY rag-knowledge/pom.xml rag-knowledge/pom.xml
+COPY rag-ingestion/pom.xml rag-ingestion/pom.xml
+COPY rag-retrieval/pom.xml rag-retrieval/pom.xml
+COPY rag-chat/pom.xml rag-chat/pom.xml
+COPY rag-app/pom.xml rag-app/pom.xml
 RUN --mount=type=cache,target=/root/.m2 \
     ./mvnw -B -ntp dependency:go-offline
 
-# Now copy sources and build
-COPY src src
+# Copy module sources only after dependency resolution so source edits retain
+# the Maven dependency cache layer.
+COPY rag-common/src rag-common/src
+COPY rag-knowledge/src rag-knowledge/src
+COPY rag-ingestion/src rag-ingestion/src
+COPY rag-retrieval/src rag-retrieval/src
+COPY rag-chat/src rag-chat/src
+COPY rag-app/src rag-app/src
 RUN --mount=type=cache,target=/root/.m2 \
     ./mvnw -B -ntp -DskipTests package && \
-    cp target/rag-*.jar /workspace/app.jar
+    cp rag-app/target/rag-app-*.jar /workspace/app.jar
 
 # ============================================================================
 # Runtime stage — JRE only, non-root user, minimal surface
