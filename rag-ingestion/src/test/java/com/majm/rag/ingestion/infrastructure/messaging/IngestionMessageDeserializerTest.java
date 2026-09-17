@@ -4,7 +4,7 @@ import com.majm.rag.ingestion.domain.IngestionMessage;
 import org.apache.kafka.common.header.internals.RecordHeaders;
 import org.junit.jupiter.api.Test;
 import org.springframework.kafka.support.serializer.ErrorHandlingDeserializer;
-import org.springframework.kafka.support.serializer.JsonDeserializer;
+import org.springframework.kafka.support.serializer.JacksonJsonDeserializer;
 import org.springframework.kafka.support.serializer.SerializationUtils;
 
 import java.nio.charset.StandardCharsets;
@@ -48,11 +48,11 @@ class IngestionMessageDeserializerTest {
 
     private ErrorHandlingDeserializer<IngestionMessage> deserializer() {
         ErrorHandlingDeserializer<IngestionMessage> deserializer =
-            new ErrorHandlingDeserializer<>(new JsonDeserializer<>());
+            new ErrorHandlingDeserializer<>(new JacksonJsonDeserializer<>());
         deserializer.configure(Map.of(
-            JsonDeserializer.VALUE_DEFAULT_TYPE, IngestionMessage.class.getName(),
-            JsonDeserializer.USE_TYPE_INFO_HEADERS, false,
-            JsonDeserializer.TRUSTED_PACKAGES, IngestionMessage.class.getPackageName()), false);
+            JacksonJsonDeserializer.VALUE_DEFAULT_TYPE, IngestionMessage.class.getName(),
+            JacksonJsonDeserializer.USE_TYPE_INFO_HEADERS, false,
+            JacksonJsonDeserializer.TRUSTED_PACKAGES, IngestionMessage.class.getPackageName()), false);
         return deserializer;
     }
 

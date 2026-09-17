@@ -1,7 +1,7 @@
 package com.majm.rag.config;
 
 import org.junit.jupiter.api.Test;
-import org.springframework.boot.env.EnvironmentPostProcessor;
+import org.springframework.boot.EnvironmentPostProcessor;
 import org.springframework.core.io.ClassPathResource;
 import org.springframework.core.io.support.PropertiesLoaderUtils;
 import org.springframework.mock.env.MockEnvironment;
@@ -16,22 +16,22 @@ class OpenAiBaseUrlEnvironmentPostProcessorTest {
         new OpenAiBaseUrlEnvironmentPostProcessor();
 
     @Test
-    void removesTrailingV1FromOpenAiCompatibleGatewayUrls() {
+    void preservesV1WithoutDuplicatingItForOpenAiSdk() {
         assertThat(OpenAiBaseUrlEnvironmentPostProcessor.normalize(
             "https://ai-gateway.kapi.work/openai/qwen/v1"))
-            .isEqualTo("https://ai-gateway.kapi.work/openai/qwen");
+            .isEqualTo("https://ai-gateway.kapi.work/openai/qwen/v1");
         assertThat(OpenAiBaseUrlEnvironmentPostProcessor.normalize(
             "https://ai-gateway.kapi.work/openai/qwen/v1/"))
-            .isEqualTo("https://ai-gateway.kapi.work/openai/qwen");
+            .isEqualTo("https://ai-gateway.kapi.work/openai/qwen/v1");
     }
 
     @Test
-    void preservesBaseUrlsWithoutV1Suffix() {
+    void addsV1ToLegacyGatewayRoots() {
         assertThat(OpenAiBaseUrlEnvironmentPostProcessor.normalize(
             "https://dashscope.aliyuncs.com/compatible-mode"))
-            .isEqualTo("https://dashscope.aliyuncs.com/compatible-mode");
+            .isEqualTo("https://dashscope.aliyuncs.com/compatible-mode/v1");
         assertThat(OpenAiBaseUrlEnvironmentPostProcessor.normalize("http://localhost:8080/v10"))
-            .isEqualTo("http://localhost:8080/v10");
+            .isEqualTo("http://localhost:8080/v10/v1");
     }
 
     @Test
@@ -44,11 +44,11 @@ class OpenAiBaseUrlEnvironmentPostProcessorTest {
         processor.postProcessEnvironment(environment, null);
 
         assertThat(environment.getProperty("spring.ai.openai.base-url"))
-            .isEqualTo("https://gateway.example/openai");
+            .isEqualTo("https://gateway.example/openai/v1");
         assertThat(environment.getProperty("spring.ai.openai.chat.base-url"))
-            .isEqualTo("https://chat.example");
+            .isEqualTo("https://chat.example/v1");
         assertThat(environment.getProperty("spring.ai.openai.embedding.base-url"))
-            .isEqualTo("https://embedding.example");
+            .isEqualTo("https://embedding.example/v1");
     }
 
     @Test

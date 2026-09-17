@@ -128,18 +128,16 @@ public interface DocumentRepository extends JpaRepository<Document, UUID> {
 
 依赖 DB-level `ON DELETE CASCADE`：删除 KB 自动删 documents（V1 schema 已声明）。仓储不再有 `deleteByKnowledgeBaseId` 方法。
 
-### 2.2 ChunkQueryService（JdbcTemplate 直查 vector_store）
+### 2.2 ChunkQueryService（Spring Data JPA 查询 vector_store）
 
-`vector_store` 是 Spring AI 管理的表，没有对应 JPA 实体。元数据查询走 JdbcTemplate：
+`vector_store` 通过只读 JPA 实体 `VectorChunk` 映射 `id`、`content`、`metadata`，
+JSONB 使用 Hibernate `@JdbcTypeCode(SqlTypes.JSON)` 映射为 `Map<String, Object>`。
+`VectorChunkRepository` 使用原生查询完成 JSONB 过滤、数字排序和批量删除：
 
 ```java
 @Service
 public class ChunkQueryService {
-    private static final String LIST_BY_DOC = """
-        SELECT id, content, metadata FROM vector_store
-         WHERE metadata->>'document_id' = ?
-         ORDER BY (metadata->>'chunk_index')::int
-        """;
+    private final VectorChunkRepository repository;
 
     public List<DocumentChunkResponse> listByDocument(UUID documentId);
     public int deleteByDocument(UUID documentId);
@@ -147,6 +145,10 @@ public class ChunkQueryService {
     public int deleteByKnowledgeBase(UUID kbId);
 }
 ```
+
+查询使用只读事务，删除使用 `@Modifying(flushAutomatically = true)` 加入调用方事务。
+删除后不清空持久化上下文，以保留摄入流程中仍需更新状态的托管 `Document`。
+向量写入和相似度检索仍由 Spring AI `PgVectorStore` 负责；其底层适配依赖 JdbcTemplate。
 
 `metadata` 是 JSONB，索引：
 ```sql
@@ -340,8 +342,11 @@ public class IngestionOutboxPublisher {
 ```
 
 `document` 与 Outbox 事件原子提交，消除了 DB 已提交但 Kafka 发送进程崩溃造成的消息丢失窗口。
-Outbox 仓储使用 JDBC，因此先 `saveAndFlush` 保证父记录 INSERT 已执行，再写带外键的
-Outbox 行；二者仍由同一 Spring 事务提交或回滚。
+Outbox 使用 `IngestionOutbox` 实体与 Spring Data JPA 仓储，入队通过 `save`，
+发布和重试状态通过实体脏检查保存。Outbox 以 UUID 字段引用文档，因此先 `saveAndFlush`
+保证父记录 INSERT 已执行，再写带外键的 Outbox 行；二者由同一 Spring 事务提交或回滚。
+锁定批次保留 PostgreSQL `FOR UPDATE SKIP LOCKED` 原生查询，并要求调用方已开启事务，
+保证锁持续到该批次发布或重试更新完成。
 发布失败保留 `PENDING`，记录 `attempt_count`、`next_attempt_at` 和 `last_error`，按
 2s 起步、最高 300s 的指数退避重试。发布语义为 at-least-once，消费端通过 DONE
 短路、文档行锁、确定性 chunk ID 和事务内 upsert 后裁剪保证重试幂等；V7 外键
@@ -719,10 +724,10 @@ spring:
       dimensions: 1024
       initialize-schema: false
     openai:
-      base-url: ${BAILIAN_BASE_URL:https://dashscope.aliyuncs.com/compatible-mode}
+      base-url: ${BAILIAN_BASE_URL:https://dashscope.aliyuncs.com/compatible-mode/v1}
       api-key: ${DASHSCOPE_API_KEY:${OPENAI_API_KEY:dummy}}
-      chat.options.model: ${BAILIAN_CHAT_MODEL:qwen-plus}
-      embedding.options.model: ${BAILIAN_EMBEDDING_MODEL:text-embedding-v3}
+      chat.model: ${BAILIAN_CHAT_MODEL:qwen-plus}
+      embedding.model: ${BAILIAN_EMBEDDING_MODEL:text-embedding-v3}
     ollama:
       base-url: ${OLLAMA_BASE_URL:http://localhost:11434}
       chat.options.model: llama3.2
@@ -905,7 +910,7 @@ REINDEX INDEX vector_store_embedding_hnsw_idx;
 
 ### 14.2 切换 LLM provider
 
-1. `application.yml` 改 `spring.ai.openai.{base-url, api-key, chat.options.model, embedding.options.model}`
+1. `application.yml` 改 `spring.ai.openai.{base-url, api-key, chat.model, embedding.model}`
 2. 改 `spring.ai.vectorstore.pgvector.dimensions` 和 V?-migration（重建 vector_store）
 3. 调 `app.embedding.batch-size`（OpenAI ~2048，DashScope 10）
 4. prod 重启时 `StartupValidator` 会先校验
@@ -926,12 +931,12 @@ REINDEX INDEX vector_store_embedding_hnsw_idx;
 
 ```
 Java:         21
-Spring Boot:  3.3.5
-Spring AI:    1.1.5
+Spring Boot:  4.1.1
+Spring AI:    2.0.1
 PostgreSQL:   18 + pgvector
 Kafka:        3.8.0
-Spring AI Readers: 1.1.5
-Tika:             3.3.0
+Spring AI Readers: 2.0.1
+Tika:             3.3.1
 ```
 
 发布前验证命令：

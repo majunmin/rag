@@ -36,6 +36,7 @@ public class VectorStoreConfig {
 
     @Bean
     @Primary
+    // PgVectorStore's adapter requires JdbcTemplate; business persistence uses JPA.
     public VectorStore vectorStore(JdbcTemplate jdbcTemplate,
                                    @Qualifier("openAiEmbeddingModel") EmbeddingModel embeddingModel,
                                    BatchingStrategy embeddingBatchingStrategy) {

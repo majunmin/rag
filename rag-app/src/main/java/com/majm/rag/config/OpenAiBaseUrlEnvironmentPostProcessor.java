@@ -1,7 +1,7 @@
 package com.majm.rag.config;
 
 import org.springframework.boot.SpringApplication;
-import org.springframework.boot.env.EnvironmentPostProcessor;
+import org.springframework.boot.EnvironmentPostProcessor;
 import org.springframework.core.Ordered;
 import org.springframework.core.env.ConfigurableEnvironment;
 import org.springframework.core.env.MapPropertySource;
@@ -10,9 +10,8 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 
 /**
- * Spring AI appends /v1/... endpoint paths to the configured OpenAI base URL.
- * OpenAI-compatible gateways commonly publish a base URL ending in /v1, so
- * normalize that suffix before Spring AI binds its connection properties.
+ * Spring AI 2 uses the OpenAI SDK, whose base URL includes /v1.
+ * Preserve that suffix and add it for legacy gateway roots accepted by Spring AI 1.
  */
 public final class OpenAiBaseUrlEnvironmentPostProcessor implements EnvironmentPostProcessor, Ordered {
 
@@ -49,8 +48,8 @@ public final class OpenAiBaseUrlEnvironmentPostProcessor implements EnvironmentP
         while (normalized.endsWith("/")) {
             normalized = normalized.substring(0, normalized.length() - 1);
         }
-        if (normalized.endsWith("/v1")) {
-            normalized = normalized.substring(0, normalized.length() - 3);
+        if (!normalized.isEmpty() && !normalized.endsWith("/v1")) {
+            normalized += "/v1";
         }
         return normalized;
     }

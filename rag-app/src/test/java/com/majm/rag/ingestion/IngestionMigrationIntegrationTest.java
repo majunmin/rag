@@ -6,6 +6,7 @@ import org.junit.jupiter.api.Test;
 
 import java.net.InetSocketAddress;
 import java.net.Socket;
+import java.net.URI;
 import java.sql.Connection;
 import java.sql.DriverManager;
 import java.sql.ResultSet;
@@ -17,13 +18,13 @@ import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 class IngestionMigrationIntegrationTest {
 
-    private static final String URL = "jdbc:postgresql://localhost:5432/rag";
-    private static final String USER = "rag";
-    private static final String PASSWORD = "rag";
+    private static final String URL = System.getProperty("test.database.url", "jdbc:postgresql://localhost:5432/rag");
+    private static final String USER = System.getProperty("test.database.username", "rag");
+    private static final String PASSWORD = System.getProperty("test.database.password", "rag");
 
     @Test
     void v8RemovesPartialLegacyVectorsButPreservesCompletedDocuments() throws Exception {
-        assumeTrue(canConnect(), "Postgres not reachable on localhost:5432");
+        assumeTrue(canConnect(), "Postgres not reachable; configure test.database.url");
         String schema = "migration_test_" + UUID.randomUUID().toString().replace("-", "");
 
         try {
@@ -97,7 +98,8 @@ class IngestionMigrationIntegrationTest {
 
     private boolean canConnect() {
         try (Socket socket = new Socket()) {
-            socket.connect(new InetSocketAddress("localhost", 5432), 500);
+            URI database = URI.create(URL.substring("jdbc:".length()));
+            socket.connect(new InetSocketAddress(database.getHost(), database.getPort() < 0 ? 5432 : database.getPort()), 500);
             return true;
         } catch (Exception e) {
             return false;

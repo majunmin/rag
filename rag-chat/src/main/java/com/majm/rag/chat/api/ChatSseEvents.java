@@ -1,7 +1,8 @@
 package com.majm.rag.chat.api;
 
-import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.databind.ObjectMapper;
+import tools.jackson.core.JacksonException;
+import tools.jackson.databind.ObjectMapper;
+import tools.jackson.databind.json.JsonMapper;
 import com.majm.rag.chat.application.ChatStream;
 import com.majm.rag.common.api.dto.ErrorResponse;
 import lombok.extern.slf4j.Slf4j;
@@ -31,7 +32,7 @@ import java.util.UUID;
 @Slf4j
 final class ChatSseEvents {
 
-    private static final ObjectMapper MAPPER = new ObjectMapper().findAndRegisterModules();
+    private static final ObjectMapper MAPPER = JsonMapper.builder().findAndAddModules().build();
 
     private ChatSseEvents() {}
 
@@ -57,7 +58,7 @@ final class ChatSseEvents {
     private static String serializeContext(ChatStream stream) {
         try {
             return MAPPER.writeValueAsString(stream.context());
-        } catch (JsonProcessingException e) {
+        } catch (JacksonException e) {
             throw new IllegalStateException("Could not serialize retrieval context", e);
         }
     }
@@ -78,7 +79,7 @@ final class ChatSseEvents {
     private static String serialize(ErrorResponse body, String fallbackTraceId) {
         try {
             return MAPPER.writeValueAsString(body);
-        } catch (JsonProcessingException e) {
+        } catch (JacksonException e) {
             // Defensive: this should never happen on a record with primitive
             // fields, but if it does, give the client enough to act on.
             return "{\"code\":\"STREAM_ERROR\",\"message\":\"Streaming response interrupted\","

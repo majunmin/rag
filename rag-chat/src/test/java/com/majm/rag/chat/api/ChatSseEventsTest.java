@@ -1,8 +1,9 @@
 package com.majm.rag.chat.api;
 
-import com.fasterxml.jackson.databind.DeserializationFeature;
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.core.type.TypeReference;
+import tools.jackson.databind.DeserializationFeature;
+import tools.jackson.databind.ObjectMapper;
+import tools.jackson.databind.json.JsonMapper;
+import tools.jackson.core.type.TypeReference;
 import com.majm.rag.chat.application.ChatStream;
 import com.majm.rag.retrieval.api.dto.SearchResultItem;
 import org.junit.jupiter.api.Test;
@@ -17,9 +18,10 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 class ChatSseEventsTest {
 
-    private final ObjectMapper mapper = new ObjectMapper()
-        .findAndRegisterModules()
-        .configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
+    private final ObjectMapper mapper = JsonMapper.builder()
+        .findAndAddModules()
+        .disable(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES)
+        .build();
 
     @Test
     void emitsContextBeforeTokenEventsThenDone_onNormalCompletion() {

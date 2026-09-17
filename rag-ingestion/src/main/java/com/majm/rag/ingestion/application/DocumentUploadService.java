@@ -44,8 +44,6 @@ public class DocumentUploadService {
         doc.setName(displayName);
         doc.setFileType(detectFileType(displayName));
         doc.setFilePath(path);
-        // The outbox repository uses JDBC directly, so flush the JPA insert
-        // before its foreign key is checked within the same transaction.
         return saveAndEnqueue(doc, knowledgeBaseId);
     }
 
@@ -70,6 +68,7 @@ public class DocumentUploadService {
     }
 
     private UploadDocumentResponse saveAndEnqueue(Document doc, UUID knowledgeBaseId) {
+        // Outbox stores scalar owner IDs; flush the document before its FK is checked.
         Document savedDoc = documentRepository.saveAndFlush(doc);
         outboxRepository.enqueue(savedDoc.getId(), knowledgeBaseId);
         return new UploadDocumentResponse(savedDoc.getId(), savedDoc.getName(),

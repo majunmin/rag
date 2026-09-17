@@ -12,12 +12,12 @@
 | 类别 | 选型 |
 |---|---|
 | 语言 / JVM | Java 21 (Temurin) |
-| 框架 | Spring Boot 3.3.5 |
-| AI / 向量检索 | Spring AI 1.1.5 + pgvector |
+| 框架 | Spring Boot 4.1.1 |
+| AI / 向量检索 | Spring AI 2.0.1 + pgvector |
 | 数据库 | PostgreSQL 18 + pgvector |
 | 消息队列 | Apache Kafka 3.8 (KRaft) |
 | LLM 服务 | 阿里云百炼 (DashScope) — `qwen-plus` + `text-embedding-v3` |
-| 文档解析 | Spring AI Document Readers 1.1.5 + Apache Tika 3.3 |
+| 文档解析 | Spring AI Document Readers 2.0.1 + Apache Tika 3.3.1 |
 | 构建 | Maven 3.9 + Maven Wrapper |
 | 容器 | Docker (multi-stage Alpine) |
 
@@ -56,11 +56,32 @@ export DASHSCOPE_API_KEY=sk-xxx
 
 ```bash
 ./mvnw test                    # 全部测试 (~20s, 含集成测试)
-./mvnw test -Dtest='!IngestionConsumerIntegrationTest'   # 只跑单元测试
+./mvnw test -Dtest='!*IntegrationTest'   # 只跑单元测试
+./mvnw test -Dtest=JpaPersistenceIntegrationTest \
+  -Dtest.database.url=jdbc:postgresql://localhost:5432/rag   # JPA 数据库回归
 ```
 
-集成测试依赖本地 docker-compose 栈（pg + kafka 端口可达）；不可达时
-自动 skip。
+摄入端到端测试依赖本地 docker-compose 栈（pg + kafka 端口可达）；不可达时
+自动 skip。`JpaPersistenceIntegrationTest` 只依赖 PostgreSQL/pgvector，使用独立 schema
+验证 JSONB 分块查询与删除、Outbox 事务回滚及并发锁，结束后自动清理；数据库账号可通过
+`test.database.username`、`test.database.password` 指定（默认均为 `rag`）。
+
+所有数据库集成测试均支持 `test.database.url`；摄入端到端测试还支持
+`test.kafka.bootstrap-servers`，便于使用独立端口上的临时服务：
+
+```bash
+./mvnw verify -Dtest.database.url=jdbc:postgresql://localhost:55432/rag \
+  -Dtest.kafka.bootstrap-servers=localhost:59092
+```
+
+Spring AI 2.0.1 使用官方 OpenAI SDK。Chat 与 Embedding 模型分别配置在
+`spring.ai.openai.chat.model` 和 `spring.ai.openai.embedding.model`，API 地址应包含
+`/v1`（原有不带 `/v1` 的根地址会自动兼容）。SDK 重试次数改用
+`spring.ai.openai.max-retries` 或模型级 `chat.max-retries`、`embedding.max-retries`；
+旧 `spring.ai.retry.*` 不再控制 OpenAI 请求。
+配套 Spring Boot 4.1.1、Springdoc 3.1.1 和 Jackson 3，参见
+[Spring AI 兼容说明](https://docs.spring.io/spring-ai/reference/getting-started.html)与
+[升级说明](https://docs.spring.io/spring-ai/reference/upgrade-notes.html)。
 
 ---
 
@@ -79,9 +100,9 @@ export DASHSCOPE_API_KEY=sk-xxx
 |---|---|---|
 | `DB_URL` / `DB_USERNAME` / `DB_PASSWORD` | prod 必需 | Postgres 连接；prod 拒绝 dev 默认值 `rag` |
 | `DASHSCOPE_API_KEY` | prod 必需 | 百炼 API Key；prod 拒绝 `dummy`/空 |
-| `BAILIAN_BASE_URL` / `BAILIAN_CHAT_BASE_URL` | 否 | Chat 的 OpenAI 兼容网关根地址；末尾 `/v1` 会自动规范化 |
+| `BAILIAN_BASE_URL` / `BAILIAN_CHAT_BASE_URL` | 否 | Chat 的 OpenAI 兼容 API 地址；保留末尾 `/v1`，旧根地址会自动补上 `/v1` |
 | `BAILIAN_CHAT_API_KEY` | 否 | Chat 网关独立 Key；默认回退到 `DASHSCOPE_API_KEY` |
-| `BAILIAN_EMBEDDING_BASE_URL` | 否 | Embedding 独立地址，默认 DashScope `compatible-mode`；不要指向仅支持 Chat 的 KAPI `qwen` 路由 |
+| `BAILIAN_EMBEDDING_BASE_URL` | 否 | Embedding 独立地址，默认 DashScope `compatible-mode/v1`；不要指向仅支持 Chat 的 KAPI `qwen` 路由 |
 | `BAILIAN_EMBEDDING_API_KEY` | 否 | Embedding 独立 Key；默认回退到 `DASHSCOPE_API_KEY` |
 | `KAFKA_BOOTSTRAP_SERVERS` | 否 | 默认 `localhost:9092` |
 | `APP_STORAGE_BASE_PATH` | 否 | 默认 `~/rag-uploads`；Docker 镜像默认 `/app/uploads` |

@@ -32,6 +32,7 @@ import org.springframework.util.MultiValueMap;
 import org.springframework.web.client.RestTemplate;
 
 import java.net.Socket;
+import java.net.URI;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
@@ -65,34 +66,41 @@ import static org.junit.jupiter.api.Assumptions.assumeTrue;
 @DisplayName("IngestionConsumer end-to-end (local PG + Kafka + WireMock)")
 class IngestionConsumerIntegrationTest {
 
+    private static final String DATABASE_URL = System.getProperty(
+        "test.database.url", "jdbc:postgresql://localhost:5432/rag");
+    private static final String KAFKA_SERVERS = System.getProperty(
+        "test.kafka.bootstrap-servers", "localhost:9092");
+
     static WireMockServer wireMock;
 
     @BeforeAll
     static void requireLocalInfra() {
-        assumeTrue(canConnect("localhost", 5432),
-            "Postgres not reachable on localhost:5432 — run docker compose up -d");
-        assumeTrue(canConnect("localhost", 9092),
-            "Kafka not reachable on localhost:9092 — run docker compose up -d");
+        URI database = URI.create(DATABASE_URL.substring("jdbc:".length()));
+        URI kafka = URI.create("tcp://" + KAFKA_SERVERS.split(",")[0]);
+        assumeTrue(canConnect(database.getHost(), database.getPort() < 0 ? 5432 : database.getPort()),
+            "Postgres not reachable — run docker compose up -d or configure test.database.url");
+        assumeTrue(canConnect(kafka.getHost(), kafka.getPort()),
+            "Kafka not reachable — run docker compose up -d or configure test.kafka.bootstrap-servers");
     }
 
     @DynamicPropertySource
     static void overrideOpenAi(DynamicPropertyRegistry registry) {
+        registry.add("spring.datasource.url", () -> DATABASE_URL);
+        registry.add("spring.datasource.username", () -> System.getProperty("test.database.username", "rag"));
+        registry.add("spring.datasource.password", () -> System.getProperty("test.database.password", "rag"));
+        registry.add("spring.kafka.bootstrap-servers", () -> KAFKA_SERVERS);
         wireMock = new WireMockServer(WireMockConfiguration.options().dynamicPort());
         wireMock.start();
-        registry.add("spring.ai.openai.base-url", wireMock::baseUrl);
+        registry.add("spring.ai.openai.base-url", () -> wireMock.baseUrl() + "/v1");
         registry.add("spring.ai.openai.api-key", () -> "test-key");
-        // Spring AI 1.1+ split per-model URL/key from the global ones; without
-        // these the embedding model falls back to api.openai.com.
-        registry.add("spring.ai.openai.embedding.base-url", wireMock::baseUrl);
+        // Keep both model clients on WireMock, including their SDK /v1 prefix.
+        registry.add("spring.ai.openai.embedding.base-url", () -> wireMock.baseUrl() + "/v1");
         registry.add("spring.ai.openai.embedding.api-key", () -> "test-key");
-        registry.add("spring.ai.openai.chat.base-url", wireMock::baseUrl);
+        registry.add("spring.ai.openai.chat.base-url", () -> wireMock.baseUrl() + "/v1");
         registry.add("spring.ai.openai.chat.api-key", () -> "test-key");
-        registry.add("spring.ai.openai.embedding.options.model", () -> "text-embedding-v3");
-        // Make Spring AI retry failures only once with a tiny backoff so
-        // failure-path tests don't sit in retry loops for a minute+.
-        registry.add("spring.ai.retry.max-attempts", () -> "1");
-        registry.add("spring.ai.retry.backoff.initial-interval", () -> "10ms");
-        registry.add("spring.ai.retry.backoff.max-interval", () -> "20ms");
+        registry.add("spring.ai.openai.embedding.model", () -> "text-embedding-v3");
+        // Spring AI 2 uses the OpenAI SDK's retries. Kafka owns retrying this test.
+        registry.add("spring.ai.openai.max-retries", () -> "0");
     }
 
     @AfterAll
@@ -122,6 +130,15 @@ class IngestionConsumerIntegrationTest {
                 + "(SELECT id::text FROM document WHERE name LIKE 'integration-test-%')");
         jdbcTemplate.update("DELETE FROM document WHERE name LIKE 'integration-test-%'");
         jdbcTemplate.update("DELETE FROM knowledge_base WHERE name LIKE 'integration-test-%'");
+    }
+
+    @Test
+    void exposesOpenApiAfterBootUpgrade() {
+        Map<?, ?> description = http.getForObject("http://localhost:" + port + "/v3/api-docs", Map.class);
+        assertThat(description).isNotNull();
+        assertThat(description.get("openapi").toString()).startsWith("3.");
+        assertThat(((Map<?, ?>) description.get("paths")).keySet())
+            .anyMatch(path -> path.toString().contains("knowledge-bases"));
     }
 
     @Test

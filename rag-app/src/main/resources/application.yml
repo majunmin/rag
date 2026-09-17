@@ -36,7 +36,7 @@ spring:
       value-deserializer: org.springframework.kafka.support.serializer.ErrorHandlingDeserializer
       properties:
         spring.deserializer.key.delegate.class: org.apache.kafka.common.serialization.StringDeserializer
-        spring.deserializer.value.delegate.class: org.springframework.kafka.support.serializer.JsonDeserializer
+        spring.deserializer.value.delegate.class: org.springframework.kafka.support.serializer.JacksonJsonDeserializer
         # document.ingestion carries one schema. Ignore Java type headers so
         # messages written before a package move remain readable.
         spring.json.value.default.type: com.majm.rag.ingestion.domain.IngestionMessage
@@ -44,7 +44,7 @@ spring:
         spring.json.trusted.packages: "com.majm.rag.ingestion.domain"
     producer:
       key-serializer: org.apache.kafka.common.serialization.StringSerializer
-      value-serializer: org.springframework.kafka.support.serializer.JsonSerializer
+      value-serializer: org.springframework.kafka.support.serializer.JacksonJsonSerializer
       properties:
         # Do not couple the durable message contract to a Java package name.
         spring.json.add.type.headers: false
@@ -61,20 +61,18 @@ spring:
         dimensions: 1024
         initialize-schema: false
     openai:
-      base-url: ${BAILIAN_BASE_URL:https://dashscope.aliyuncs.com/compatible-mode}
+      base-url: ${BAILIAN_BASE_URL:https://dashscope.aliyuncs.com/compatible-mode/v1}
       api-key: ${DASHSCOPE_API_KEY:${OPENAI_API_KEY:dummy}}
       chat:
-        base-url: ${BAILIAN_CHAT_BASE_URL:${BAILIAN_BASE_URL:https://dashscope.aliyuncs.com/compatible-mode}}
+        base-url: ${BAILIAN_CHAT_BASE_URL:${BAILIAN_BASE_URL:https://dashscope.aliyuncs.com/compatible-mode/v1}}
         api-key: ${BAILIAN_CHAT_API_KEY:${DASHSCOPE_API_KEY:${OPENAI_API_KEY:dummy}}}
-        options:
-          model: ${BAILIAN_CHAT_MODEL:qwen-plus}
+        model: ${BAILIAN_CHAT_MODEL:qwen-plus}
       embedding:
         # Chat-only gateways such as /openai/qwen do not expose embeddings.
         # Keep embedding on a dedicated provider unless explicitly overridden.
-        base-url: ${BAILIAN_EMBEDDING_BASE_URL:https://dashscope.aliyuncs.com/compatible-mode}
+        base-url: ${BAILIAN_EMBEDDING_BASE_URL:https://dashscope.aliyuncs.com/compatible-mode/v1}
         api-key: ${BAILIAN_EMBEDDING_API_KEY:${DASHSCOPE_API_KEY:${OPENAI_API_KEY:dummy}}}
-        options:
-          model: ${BAILIAN_EMBEDDING_MODEL:text-embedding-v3}
+        model: ${BAILIAN_EMBEDDING_MODEL:text-embedding-v3}
     ollama:
       base-url: ${OLLAMA_BASE_URL:http://localhost:11434}
       chat:

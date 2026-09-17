@@ -27,7 +27,7 @@ public class KnowledgeBase {
     /**
      * Informational only: records which embedding model was (or will be) used to embed
      * this knowledge base. The runtime VectorStore is configured globally via
-     * application.yml (spring.ai.openai.embedding.options.model), so changing this
+     * application.yml (spring.ai.openai.embedding.model), so changing this
      * field does NOT route ingestion or retrieval to a different model. If a future
      * release introduces per-KB model routing, callers should re-embed existing
      * chunks before changing this value.

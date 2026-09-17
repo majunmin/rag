@@ -32,7 +32,7 @@
                │ Header: X-API-Key（可选开启）
                ▼
 ┌────────────────────────────────────────────────────────────────────┐
-│                  rag0429 后端 (Spring Boot 3.3.5)                  │
+│                  rag0429 后端 (Spring Boot 4.1.1)                  │
 │                                                                    │
 │   /api/v1/knowledge-bases          KnowledgeBaseController         │
 │   /api/v1/.../documents            DocumentController              │
@@ -129,13 +129,13 @@
 | 类别 | 技术 | 版本 |
 |---|---|---|
 | 语言 | Java | 21 |
-| 框架 | Spring Boot | 3.3.5 |
-| AI 框架 | Spring AI | 1.1.5 |
-| Web | Spring MVC（同步）+ Reactor Flux（SSE 流式） | 6.1.x / 3.6.x |
-| 数据访问 | Spring Data JPA / Hibernate 6 + JdbcTemplate | 6.5.3 |
-| 数据库迁移 | Flyway | 10.10.0 |
-| 消息中间件 | Apache Kafka + Spring Kafka | 3.7 / 3.2.4 |
-| 文档解析 | Spring AI PDF / Markdown / Jsoup Reader + Apache Tika | 1.1.5 / 3.3.0 |
+| 框架 | Spring Boot | 4.1.1 |
+| AI 框架 | Spring AI | 2.0.1 |
+| Web | Spring MVC（同步）+ Reactor Flux（SSE 流式） | 7.0.9 / 3.8.7 |
+| 数据访问 | Spring Data JPA / Hibernate 7（PgVectorStore 底层使用 JdbcTemplate） | 7.4.5 |
+| 数据库迁移 | Flyway | 12.4.0 |
+| 消息中间件 | Apache Kafka + Spring Kafka | 3.8.0 / 4.1.1 |
+| 文档解析 | Spring AI PDF / Markdown / Jsoup Reader + Apache Tika | 2.0.1 / 3.3.1 |
 | 文本切分 | 自定义 OverlappingTokenTextSplitter（cl100k_base） | — |
 | 可观测性 | Spring Boot Actuator + Micrometer | — |
 | 构建 | Maven | — |
@@ -193,7 +193,7 @@ rag-app ─┬─> rag-chat ─> rag-retrieval
 - `api`：Controller 和对外 DTO。
 - `application`：用例编排和事务边界；`application.port` 定义跨层端口。
 - `domain`：实体、值对象和领域状态。
-- `infrastructure`：JPA/JDBC、Kafka、存储、文档解析等技术实现。
+- `infrastructure`：JPA 仓储、Kafka、存储、文档解析等技术实现。
 - `config`：只放模块私有配置；跨模块 Bean 在 `rag-app/config` 组装。
 
 `StorageService` 端口由 `rag-knowledge` 定义、`rag-ingestion` 的
@@ -427,7 +427,7 @@ pnpm dev                    # http://localhost:5173
 |---|---|---|
 | `spring.datasource.{url,username,password}` | dev `rag/rag` | prod 由 `DB_*` env 强制覆盖（StartupValidator） |
 | `spring.ai.openai.{base-url, api-key}` | DashScope 百炼 | prod 拒绝 `dummy` |
-| `spring.ai.openai.embedding.options.model` | `text-embedding-v3` | 1024 维（V3 schema 对齐） |
+| `spring.ai.openai.embedding.model` | `text-embedding-v3` | 1024 维（V3 schema 对齐） |
 | `spring.ai.vectorstore.pgvector.dimensions` | 1024 | 改维度时需重建 vector_store |
 | `app.embedding.batch-size` | **10** | 百炼硬限；OpenAI 可设 2048 |
 | `app.chat.max-history-messages` | **20** | 多轮对话滑窗 |
