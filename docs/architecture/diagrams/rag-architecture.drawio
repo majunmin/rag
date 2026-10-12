@@ -1,0 +1,423 @@
+<?xml version='1.0' encoding='utf-8'?>
+<mxfile host="drawio" agent="Codex" version="26.0.0" type="device">
+  <diagram id="overview" name="01 总体架构">
+    <mxGraphModel dx="800" dy="600" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1680" pageHeight="1200" math="0" shadow="0" background="#ffffff">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+        <mxCell id="backend" value="rag-app  /  应用组装、共享配置、Flyway、健康检查；rag-common 提供统一错误契约" style="swimlane;horizontal=1;startSize=40;html=1;whiteSpace=wrap;container=1;collapsible=0;pointerEvents=0;rounded=1;arcSize=8;fillColor=#f6f8fb;swimlaneFillColor=#ffffff;strokeColor=#c5ceda;fontColor=#334155;fontSize=17;fontStyle=1;fontFamily=Helvetica;align=left;spacingLeft=16;strokeWidth=1.5;" vertex="1" parent="1">
+          <mxGeometry x="40" y="280" width="1600" height="530" as="geometry" />
+        </mxCell>
+        <mxCell id="frontend" value="&lt;b&gt;浏览器 / rag-admin&lt;/b&gt;&lt;br&gt;独立前端仓库 · 上传、检索、对话" style="rounded=1;arcSize=12;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#666666;fontColor=#172b4d;fontFamily=Helvetica;fontSize=17;spacing=12;strokeWidth=1.5;shadow=0;align=center;verticalAlign=middle;" vertex="1" parent="1" data-model-id="frontend" data-kind="external" data-properties="{&quot;scope&quot;:&quot;current implementation&quot;}" data-source-properties="{&quot;scope&quot;:&quot;current implementation&quot;}" data-source-label="&lt;b&gt;浏览器 / rag-admin&lt;/b&gt;&lt;br&gt;独立前端仓库 · 上传、检索、对话" data-provenance="{&quot;path&quot;:&quot;README.md&quot;}">
+          <mxGeometry x="610" y="150" width="460" height="80" as="geometry" />
+        </mxCell>
+        <mxCell id="api" value="&lt;b&gt;REST + SSE 接口&lt;/b&gt;&lt;br&gt;/api/v1 · Controller 分属各业务模块&lt;br&gt;可选 X-API-Key 鉴权" style="rounded=1;arcSize=12;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;fontColor=#172b4d;fontFamily=Helvetica;fontSize=17;spacing=12;strokeWidth=1.5;shadow=0;align=center;verticalAlign=middle;" vertex="1" parent="backend" data-model-id="api" data-kind="gateway" data-properties="{&quot;scope&quot;:&quot;current implementation&quot;}" data-source-properties="{&quot;scope&quot;:&quot;current implementation&quot;}" data-source-label="&lt;b&gt;REST + SSE 接口&lt;/b&gt;&lt;br&gt;/api/v1 · Controller 分属各业务模块&lt;br&gt;可选 X-API-Key 鉴权" data-provenance="{&quot;path&quot;:&quot;rag-app/src/main/resources/application.yml&quot;}">
+          <mxGeometry x="530" y="70" width="540" height="100" as="geometry" />
+        </mxCell>
+        <mxCell id="knowledge" value="&lt;b&gt;rag-knowledge&lt;/b&gt;&lt;br&gt;知识库 / 文档领域、CRUD&lt;br&gt;分块查询 · Spring Data JPA" style="rounded=1;arcSize=12;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontColor=#172b4d;fontFamily=Helvetica;fontSize=17;spacing=12;strokeWidth=1.5;shadow=0;align=center;verticalAlign=middle;" vertex="1" parent="backend" data-model-id="knowledge" data-kind="service" data-properties="{&quot;scope&quot;:&quot;current implementation&quot;}" data-source-properties="{&quot;scope&quot;:&quot;current implementation&quot;}" data-source-label="&lt;b&gt;rag-knowledge&lt;/b&gt;&lt;br&gt;知识库 / 文档领域、CRUD&lt;br&gt;分块查询 · Spring Data JPA" data-provenance="{&quot;path&quot;:&quot;rag-knowledge/pom.xml&quot;}">
+          <mxGeometry x="40" y="240" width="300" height="120" as="geometry" />
+        </mxCell>
+        <mxCell id="ingestion" value="&lt;b&gt;rag-ingestion&lt;/b&gt;&lt;br&gt;上传 / 网页 → Outbox → Kafka&lt;br&gt;解析、分块、向量化、重试" style="rounded=1;arcSize=12;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontColor=#172b4d;fontFamily=Helvetica;fontSize=17;spacing=12;strokeWidth=1.5;shadow=0;align=center;verticalAlign=middle;" vertex="1" parent="backend" data-model-id="ingestion" data-kind="service" data-properties="{&quot;scope&quot;:&quot;current implementation&quot;}" data-source-properties="{&quot;scope&quot;:&quot;current implementation&quot;}" data-source-label="&lt;b&gt;rag-ingestion&lt;/b&gt;&lt;br&gt;上传 / 网页 → Outbox → Kafka&lt;br&gt;解析、分块、向量化、重试" data-provenance="{&quot;path&quot;:&quot;rag-ingestion/pom.xml&quot;}">
+          <mxGeometry x="440" y="240" width="300" height="120" as="geometry" />
+        </mxCell>
+        <mxCell id="retrieval" value="&lt;b&gt;rag-retrieval&lt;/b&gt;&lt;br&gt;查询改写 · 向量召回&lt;br&gt;重排 · 阈值过滤 · MMR" style="rounded=1;arcSize=12;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontColor=#172b4d;fontFamily=Helvetica;fontSize=17;spacing=12;strokeWidth=1.5;shadow=0;align=center;verticalAlign=middle;" vertex="1" parent="backend" data-model-id="retrieval" data-kind="service" data-properties="{&quot;scope&quot;:&quot;current implementation&quot;}" data-source-properties="{&quot;scope&quot;:&quot;current implementation&quot;}" data-source-label="&lt;b&gt;rag-retrieval&lt;/b&gt;&lt;br&gt;查询改写 · 向量召回&lt;br&gt;重排 · 阈值过滤 · MMR" data-provenance="{&quot;path&quot;:&quot;rag-retrieval/src/main/java/com/majm/rag/retrieval/application/RetrievalService.java&quot;}">
+          <mxGeometry x="840" y="240" width="300" height="120" as="geometry" />
+        </mxCell>
+        <mxCell id="chat" value="&lt;b&gt;rag-chat&lt;/b&gt;&lt;br&gt;单轮 / 多轮对话&lt;br&gt;上下文组装 · SSE · 历史持久化" style="rounded=1;arcSize=12;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontColor=#172b4d;fontFamily=Helvetica;fontSize=17;spacing=12;strokeWidth=1.5;shadow=0;align=center;verticalAlign=middle;" vertex="1" parent="backend" data-model-id="chat" data-kind="service" data-properties="{&quot;scope&quot;:&quot;current implementation&quot;}" data-source-properties="{&quot;scope&quot;:&quot;current implementation&quot;}" data-source-label="&lt;b&gt;rag-chat&lt;/b&gt;&lt;br&gt;单轮 / 多轮对话&lt;br&gt;上下文组装 · SSE · 历史持久化" data-provenance="{&quot;path&quot;:&quot;rag-chat/src/main/java/com/majm/rag/chat/application/ChatService.java&quot;}">
+          <mxGeometry x="1240" y="240" width="300" height="120" as="geometry" />
+        </mxCell>
+        <mxCell id="adapters" value="&lt;b&gt;基础设施适配（按职责调用，由 rag-app 组装）&lt;/b&gt;&lt;br&gt;Spring Data JPA  ·  PgVectorStore  ·  KafkaTemplate / @KafkaListener  ·  LocalStorageService  ·  ChatClient" style="rounded=1;arcSize=12;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;fontColor=#172b4d;fontFamily=Helvetica;fontSize=17;spacing=12;strokeWidth=1.5;shadow=0;align=center;verticalAlign=middle;" vertex="1" parent="backend" data-model-id="adapters" data-kind="gateway" data-properties="{&quot;scope&quot;:&quot;current implementation&quot;}" data-source-properties="{&quot;scope&quot;:&quot;current implementation&quot;}" data-source-label="&lt;b&gt;基础设施适配（按职责调用，由 rag-app 组装）&lt;/b&gt;&lt;br&gt;Spring Data JPA  ·  PgVectorStore  ·  KafkaTemplate / @KafkaListener  ·  LocalStorageService  ·  ChatClient" data-provenance="{&quot;path&quot;:&quot;rag-app/pom.xml&quot;}">
+          <mxGeometry x="40" y="420" width="1500" height="80" as="geometry" />
+        </mxCell>
+        <mxCell id="files" value="&lt;b&gt;本地文件存储&lt;/b&gt;&lt;br&gt;PDF / DOC(X) / MD / TXT&lt;br&gt;默认 ~/rag-uploads" style="rounded=1;arcSize=12;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#666666;fontColor=#172b4d;fontFamily=Helvetica;fontSize=17;spacing=12;strokeWidth=1.5;shadow=0;align=center;verticalAlign=middle;" vertex="1" parent="1" data-model-id="files" data-kind="external" data-properties="{&quot;scope&quot;:&quot;current implementation&quot;}" data-source-properties="{&quot;scope&quot;:&quot;current implementation&quot;}" data-source-label="&lt;b&gt;本地文件存储&lt;/b&gt;&lt;br&gt;PDF / DOC(X) / MD / TXT&lt;br&gt;默认 ~/rag-uploads" data-provenance="{&quot;path&quot;:&quot;rag-ingestion/src/main/java/com/majm/rag/ingestion/infrastructure/storage/LocalStorageService.java&quot;}">
+          <mxGeometry x="80" y="900" width="300" height="140" as="geometry" />
+        </mxCell>
+        <mxCell id="broker" value="&lt;b&gt;Apache Kafka 3.8&lt;/b&gt;&lt;br&gt;document.ingestion · 3 分区&lt;br&gt;document.ingestion.dlt · 1 分区" style="rounded=1;arcSize=12;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontColor=#172b4d;fontFamily=Helvetica;fontSize=17;spacing=12;strokeWidth=1.5;shadow=0;align=center;verticalAlign=middle;" vertex="1" parent="1" data-model-id="broker" data-kind="queue" data-properties="{&quot;scope&quot;:&quot;current implementation&quot;}" data-source-properties="{&quot;scope&quot;:&quot;current implementation&quot;}" data-source-label="&lt;b&gt;Apache Kafka 3.8&lt;/b&gt;&lt;br&gt;document.ingestion · 3 分区&lt;br&gt;document.ingestion.dlt · 1 分区" data-provenance="{&quot;path&quot;:&quot;rag-ingestion/src/main/java/com/majm/rag/ingestion/config/KafkaConfig.java&quot;}">
+          <mxGeometry x="480" y="900" width="300" height="140" as="geometry" />
+        </mxCell>
+        <mxCell id="postgres" value="&lt;b&gt;PostgreSQL 18 + pgvector&lt;/b&gt;&lt;br&gt;knowledge_base / document&lt;br&gt;ingestion_outbox / conversation&lt;br&gt;vector_store · HNSW · 1024 维" style="shape=cylinder3;size=14;boundedLbl=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontColor=#172b4d;fontFamily=Helvetica;fontSize=16;spacing=12;strokeWidth=1.5;shadow=0;align=center;verticalAlign=middle;" vertex="1" parent="1" data-model-id="postgres" data-kind="database" data-properties="{&quot;scope&quot;:&quot;current implementation&quot;}" data-source-properties="{&quot;scope&quot;:&quot;current implementation&quot;}" data-source-label="&lt;b&gt;PostgreSQL 18 + pgvector&lt;/b&gt;&lt;br&gt;knowledge_base / document&lt;br&gt;ingestion_outbox / conversation&lt;br&gt;vector_store · HNSW · 1024 维" data-provenance="{&quot;path&quot;:&quot;docker-compose.yml&quot;}">
+          <mxGeometry x="880" y="900" width="300" height="140" as="geometry" />
+        </mxCell>
+        <mxCell id="models" value="&lt;b&gt;模型服务 · 默认百炼&lt;/b&gt;&lt;br&gt;Chat: qwen-plus&lt;br&gt;Embedding: text-embedding-v3&lt;br&gt;Rerank: gte-rerank-v2" style="rounded=1;arcSize=12;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#666666;fontColor=#172b4d;fontFamily=Helvetica;fontSize=16;spacing=12;strokeWidth=1.5;shadow=0;align=center;verticalAlign=middle;" vertex="1" parent="1" data-model-id="models" data-kind="external" data-properties="{&quot;scope&quot;:&quot;current implementation&quot;}" data-source-properties="{&quot;scope&quot;:&quot;current implementation&quot;}" data-source-label="&lt;b&gt;模型服务 · 默认百炼&lt;/b&gt;&lt;br&gt;Chat: qwen-plus&lt;br&gt;Embedding: text-embedding-v3&lt;br&gt;Rerank: gte-rerank-v2" data-provenance="{&quot;path&quot;:&quot;rag-app/src/main/resources/application.yml&quot;}">
+          <mxGeometry x="1280" y="900" width="300" height="140" as="geometry" />
+        </mxCell>
+        <mxCell id="overview-frontend-api-0" value="HTTP / SSE" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;strokeWidth=1.6;strokeColor=#52677d;fontColor=#334155;fontFamily=Helvetica;fontSize=14;labelBackgroundColor=#ffffff;exitX=0.5;exitY=1;entryX=0.5;entryY=0;exitDx=0;exitDy=0;entryDx=0;entryDy=0;" edge="1" parent="1" source="frontend" target="api" data-model-id="overview-frontend-api-0" data-kind="flow" data-properties="{}" data-source-properties="{}" data-source-label="HTTP / SSE">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="overview-api-knowledge-1" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;strokeWidth=1.6;strokeColor=#52677d;fontColor=#334155;fontFamily=Helvetica;fontSize=14;labelBackgroundColor=#ffffff;exitX=0.1;exitY=1;entryX=0.5;entryY=0;exitDx=0;exitDy=0;entryDx=0;entryDy=0;" edge="1" parent="1" source="api" target="knowledge" data-model-id="overview-api-knowledge-1" data-kind="flow" data-properties="{}" data-source-properties="{}" data-source-label="">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="624.0" y="480" />
+              <mxPoint x="230" y="480" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="overview-knowledge-adapters-2" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;strokeWidth=1.6;strokeColor=#52677d;fontColor=#334155;fontFamily=Helvetica;fontSize=14;labelBackgroundColor=#ffffff;exitX=0.5;exitY=1;entryX=0.1;entryY=0;exitDx=0;exitDy=0;entryDx=0;entryDy=0;" edge="1" parent="1" source="knowledge" target="adapters" data-model-id="overview-knowledge-adapters-2" data-kind="flow" data-properties="{}" data-source-properties="{}" data-source-label="">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="overview-api-ingestion-3" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;strokeWidth=1.6;strokeColor=#52677d;fontColor=#334155;fontFamily=Helvetica;fontSize=14;labelBackgroundColor=#ffffff;exitX=0.3;exitY=1;entryX=0.5;entryY=0;exitDx=0;exitDy=0;entryDx=0;entryDy=0;" edge="1" parent="1" source="api" target="ingestion" data-model-id="overview-api-ingestion-3" data-kind="flow" data-properties="{}" data-source-properties="{}" data-source-label="">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="732.0" y="480" />
+              <mxPoint x="630" y="480" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="overview-ingestion-adapters-4" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;strokeWidth=1.6;strokeColor=#52677d;fontColor=#334155;fontFamily=Helvetica;fontSize=14;labelBackgroundColor=#ffffff;exitX=0.5;exitY=1;entryX=0.36666666666666664;entryY=0;exitDx=0;exitDy=0;entryDx=0;entryDy=0;" edge="1" parent="1" source="ingestion" target="adapters" data-model-id="overview-ingestion-adapters-4" data-kind="flow" data-properties="{}" data-source-properties="{}" data-source-label="">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="overview-api-retrieval-5" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;strokeWidth=1.6;strokeColor=#52677d;fontColor=#334155;fontFamily=Helvetica;fontSize=14;labelBackgroundColor=#ffffff;exitX=0.7;exitY=1;entryX=0.5;entryY=0;exitDx=0;exitDy=0;entryDx=0;entryDy=0;" edge="1" parent="1" source="api" target="retrieval" data-model-id="overview-api-retrieval-5" data-kind="flow" data-properties="{}" data-source-properties="{}" data-source-label="">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="948.0" y="480" />
+              <mxPoint x="1030" y="480" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="overview-retrieval-adapters-6" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;strokeWidth=1.6;strokeColor=#52677d;fontColor=#334155;fontFamily=Helvetica;fontSize=14;labelBackgroundColor=#ffffff;exitX=0.5;exitY=1;entryX=0.6333333333333333;entryY=0;exitDx=0;exitDy=0;entryDx=0;entryDy=0;" edge="1" parent="1" source="retrieval" target="adapters" data-model-id="overview-retrieval-adapters-6" data-kind="flow" data-properties="{}" data-source-properties="{}" data-source-label="">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="overview-api-chat-7" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;strokeWidth=1.6;strokeColor=#52677d;fontColor=#334155;fontFamily=Helvetica;fontSize=14;labelBackgroundColor=#ffffff;exitX=0.9;exitY=1;entryX=0.5;entryY=0;exitDx=0;exitDy=0;entryDx=0;entryDy=0;" edge="1" parent="1" source="api" target="chat" data-model-id="overview-api-chat-7" data-kind="flow" data-properties="{}" data-source-properties="{}" data-source-label="">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="1056.0" y="480" />
+              <mxPoint x="1430" y="480" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="overview-chat-adapters-8" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;strokeWidth=1.6;strokeColor=#52677d;fontColor=#334155;fontFamily=Helvetica;fontSize=14;labelBackgroundColor=#ffffff;exitX=0.5;exitY=1;entryX=0.9;entryY=0;exitDx=0;exitDy=0;entryDx=0;entryDy=0;" edge="1" parent="1" source="chat" target="adapters" data-model-id="overview-chat-adapters-8" data-kind="flow" data-properties="{}" data-source-properties="{}" data-source-label="">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="overview-ingestion-knowledge-9" value="领域 / 仓储" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;strokeWidth=1.6;strokeColor=#52677d;fontColor=#334155;fontFamily=Helvetica;fontSize=14;labelBackgroundColor=#ffffff;exitX=0;exitY=0.5;entryX=1;entryY=0.5;exitDx=0;exitDy=0;entryDx=0;entryDy=0;" edge="1" parent="1" source="ingestion" target="knowledge" data-model-id="overview-ingestion-knowledge-9" data-kind="flow" data-properties="{}" data-source-properties="{}" data-source-label="领域 / 仓储">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="overview-chat-retrieval-10" value="检索上下文" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;strokeWidth=1.6;strokeColor=#52677d;fontColor=#334155;fontFamily=Helvetica;fontSize=14;labelBackgroundColor=#ffffff;exitX=0;exitY=0.5;entryX=1;entryY=0.5;exitDx=0;exitDy=0;entryDx=0;entryDy=0;" edge="1" parent="1" source="chat" target="retrieval" data-model-id="overview-chat-retrieval-10" data-kind="flow" data-properties="{}" data-source-properties="{}" data-source-label="检索上下文">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="overview-adapters-files-11" value="文件 I/O" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;strokeWidth=1.6;strokeColor=#52677d;fontColor=#334155;fontFamily=Helvetica;fontSize=14;labelBackgroundColor=#ffffff;exitX=0.1;exitY=1;entryX=0.5;entryY=0;exitDx=0;exitDy=0;entryDx=0;entryDy=0;" edge="1" parent="1" source="adapters" target="files" data-model-id="overview-adapters-files-11" data-kind="flow" data-properties="{}" data-source-properties="{}" data-source-label="文件 I/O">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="overview-adapters-broker-12" value="发布 / 消费" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;strokeWidth=1.6;strokeColor=#52677d;fontColor=#334155;fontFamily=Helvetica;fontSize=14;labelBackgroundColor=#ffffff;exitX=0.36666666666666664;exitY=1;entryX=0.5;entryY=0;exitDx=0;exitDy=0;entryDx=0;entryDy=0;dashed=1;dashPattern=6 4;" edge="1" parent="1" source="adapters" target="broker" data-model-id="overview-adapters-broker-12" data-kind="async" data-properties="{}" data-source-properties="{}" data-source-label="发布 / 消费">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="overview-adapters-postgres-13" value="JPA / PgVectorStore" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;strokeWidth=1.6;strokeColor=#52677d;fontColor=#334155;fontFamily=Helvetica;fontSize=14;labelBackgroundColor=#ffffff;exitX=0.6333333333333333;exitY=1;entryX=0.5;entryY=0;exitDx=0;exitDy=0;entryDx=0;entryDy=0;" edge="1" parent="1" source="adapters" target="postgres" data-model-id="overview-adapters-postgres-13" data-kind="flow" data-properties="{}" data-source-properties="{}" data-source-label="JPA / PgVectorStore">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="overview-adapters-models-14" value="HTTPS" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;strokeWidth=1.6;strokeColor=#52677d;fontColor=#334155;fontFamily=Helvetica;fontSize=14;labelBackgroundColor=#ffffff;exitX=0.9;exitY=1;entryX=0.5;entryY=0;exitDx=0;exitDy=0;entryDx=0;entryDy=0;" edge="1" parent="1" source="adapters" target="models" data-model-id="overview-adapters-models-14" data-kind="flow" data-properties="{}" data-source-properties="{}" data-source-label="HTTPS">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="overview-legend-external" value="客户端 / 外部资源" style="rounded=1;html=1;fillColor=#f5f5f5;strokeColor=#666666;fontColor=#172b4d;fontSize=14;fontFamily=Helvetica;" vertex="1" parent="1">
+          <mxGeometry as="geometry" x="40" y="1140" width="170" height="30" />
+        </mxCell>
+        <mxCell id="overview-legend-gateway" value="接口 / 编排" style="rounded=1;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;fontColor=#172b4d;fontSize=14;fontFamily=Helvetica;" vertex="1" parent="1">
+          <mxGeometry as="geometry" x="230" y="1140" width="170" height="30" />
+        </mxCell>
+        <mxCell id="overview-legend-service" value="业务组件" style="rounded=1;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontColor=#172b4d;fontSize=14;fontFamily=Helvetica;" vertex="1" parent="1">
+          <mxGeometry as="geometry" x="420" y="1140" width="170" height="30" />
+        </mxCell>
+        <mxCell id="overview-legend-queue" value="消息 / 后台任务" style="rounded=1;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontColor=#172b4d;fontSize=14;fontFamily=Helvetica;" vertex="1" parent="1">
+          <mxGeometry as="geometry" x="610" y="1140" width="170" height="30" />
+        </mxCell>
+        <mxCell id="overview-legend-database" value="数据库 / 持久化" style="rounded=1;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontColor=#172b4d;fontSize=14;fontFamily=Helvetica;" vertex="1" parent="1">
+          <mxGeometry as="geometry" x="800" y="1140" width="170" height="30" />
+        </mxCell>
+        <mxCell id="overview-note" value="业务持久化使用 JPA；Spring AI 的 PgVectorStore 适配器仍使用 JdbcTemplate。图中模块为同一进程内组件。" style="text;html=1;whiteSpace=wrap;fillColor=none;strokeColor=none;align=left;verticalAlign=middle;fontFamily=Helvetica;fontSize=16;fontColor=#52677d;fontStyle=0;" vertex="1" parent="1">
+          <mxGeometry as="geometry" x="40" y="1070" width="1580" height="40" />
+        </mxCell>
+        <mxCell id="overview-title" value="01  /  RAG 知识库 · 总体架构" style="text;html=1;whiteSpace=wrap;fillColor=none;strokeColor=none;align=left;verticalAlign=middle;fontFamily=Helvetica;fontSize=32;fontColor=#172b4d;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry as="geometry" x="40" y="30" width="1600" height="50" />
+        </mxCell>
+        <mxCell id="overview-subtitle" value="当前实现 · Maven 多模块 / 单 Spring Boot 进程 · Java 21 · Spring Boot 4.1.1 · Spring AI 2.0.1" style="text;html=1;whiteSpace=wrap;fillColor=none;strokeColor=none;align=left;verticalAlign=middle;fontFamily=Helvetica;fontSize=17;fontColor=#52677d;fontStyle=0;" vertex="1" parent="1">
+          <mxGeometry as="geometry" x="40" y="90" width="1600" height="40" />
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+  <diagram id="ingestion-flow" name="02 摄入与事务">
+    <mxGraphModel dx="800" dy="600" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1880" pageHeight="1550" math="0" shadow="0" background="#ffffff">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+        <mxCell id="tx-upload" value="T1 · 上传事务：DocumentUploadService" style="swimlane;horizontal=1;startSize=40;html=1;whiteSpace=wrap;container=1;collapsible=0;pointerEvents=0;rounded=1;arcSize=8;fillColor=#f6f8fb;swimlaneFillColor=#ffffff;strokeColor=#82b366;fontColor=#334155;fontSize=17;fontStyle=1;fontFamily=Helvetica;align=left;spacingLeft=16;strokeWidth=1.5;dashed=1;dashPattern=6 4;" vertex="1" parent="1">
+          <mxGeometry x="450" y="160" width="900" height="250" as="geometry" />
+        </mxCell>
+        <mxCell id="tx-publish" value="T2 · 发布事务：IngestionOutboxPublisher.publishReady()" style="swimlane;horizontal=1;startSize=40;html=1;whiteSpace=wrap;container=1;collapsible=0;pointerEvents=0;rounded=1;arcSize=8;fillColor=#f6f8fb;swimlaneFillColor=#ffffff;strokeColor=#82b366;fontColor=#334155;fontSize=17;fontStyle=1;fontFamily=Helvetica;align=left;spacingLeft=16;strokeWidth=1.5;dashed=1;dashPattern=6 4;" vertex="1" parent="1">
+          <mxGeometry x="450" y="510" width="900" height="250" as="geometry" />
+        </mxCell>
+        <mxCell id="tx-process" value="T3 · 摄入事务：IngestionProcessor.process()；文档行锁保持到事务结束" style="swimlane;horizontal=1;startSize=40;html=1;whiteSpace=wrap;container=1;collapsible=0;pointerEvents=0;rounded=1;arcSize=8;fillColor=#f6f8fb;swimlaneFillColor=#ffffff;strokeColor=#82b366;fontColor=#334155;fontSize=17;fontStyle=1;fontFamily=Helvetica;align=left;spacingLeft=16;strokeWidth=1.5;dashed=1;dashPattern=6 4;" vertex="1" parent="1">
+          <mxGeometry x="450" y="890" width="1340" height="280" as="geometry" />
+        </mxCell>
+        <mxCell id="submit" value="&lt;b&gt;上传文件 / 提交 URL&lt;/b&gt;&lt;br&gt;DocumentController" style="rounded=1;arcSize=12;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;fontColor=#172b4d;fontFamily=Helvetica;fontSize=17;spacing=12;strokeWidth=1.5;shadow=0;align=center;verticalAlign=middle;" vertex="1" parent="1" data-model-id="submit" data-kind="gateway" data-properties="{&quot;scope&quot;:&quot;current implementation&quot;}" data-source-properties="{&quot;scope&quot;:&quot;current implementation&quot;}" data-source-label="&lt;b&gt;上传文件 / 提交 URL&lt;/b&gt;&lt;br&gt;DocumentController" data-provenance="{&quot;path&quot;:&quot;rag-ingestion/src/main/java/com/majm/rag/ingestion/api/DocumentController.java&quot;}">
+          <mxGeometry x="50" y="170" width="280" height="90" as="geometry" />
+        </mxCell>
+        <mxCell id="storage" value="&lt;b&gt;LocalStorageService&lt;/b&gt;&lt;br&gt;先写入本地文件&lt;br&gt;不参与数据库回滚" style="rounded=1;arcSize=12;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#666666;fontColor=#172b4d;fontFamily=Helvetica;fontSize=17;spacing=12;strokeWidth=1.5;shadow=0;align=center;verticalAlign=middle;" vertex="1" parent="1" data-model-id="storage" data-kind="external" data-properties="{&quot;scope&quot;:&quot;current implementation&quot;}" data-source-properties="{&quot;scope&quot;:&quot;current implementation&quot;}" data-source-label="&lt;b&gt;LocalStorageService&lt;/b&gt;&lt;br&gt;先写入本地文件&lt;br&gt;不参与数据库回滚" data-provenance="{&quot;path&quot;:&quot;rag-ingestion/src/main/java/com/majm/rag/ingestion/application/DocumentUploadService.java&quot;}">
+          <mxGeometry x="50" y="320" width="280" height="100" as="geometry" />
+        </mxCell>
+        <mxCell id="document-row" value="&lt;b&gt;document · PENDING&lt;/b&gt;&lt;br&gt;保存文件路径或 URL&lt;br&gt;saveAndFlush()" style="shape=cylinder3;size=14;boundedLbl=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontColor=#172b4d;fontFamily=Helvetica;fontSize=17;spacing=12;strokeWidth=1.5;shadow=0;align=center;verticalAlign=middle;" vertex="1" parent="tx-upload" data-model-id="document-row" data-kind="database" data-properties="{&quot;scope&quot;:&quot;current implementation&quot;}" data-source-properties="{&quot;scope&quot;:&quot;current implementation&quot;}" data-source-label="&lt;b&gt;document · PENDING&lt;/b&gt;&lt;br&gt;保存文件路径或 URL&lt;br&gt;saveAndFlush()" data-provenance="{&quot;path&quot;:&quot;rag-ingestion/src/main/java/com/majm/rag/ingestion/application/DocumentUploadService.java&quot;}">
+          <mxGeometry x="40" y="90" width="320" height="110" as="geometry" />
+        </mxCell>
+        <mxCell id="outbox-row" value="&lt;b&gt;ingestion_outbox · PENDING&lt;/b&gt;&lt;br&gt;同一事务登记待发事件&lt;br&gt;T1 提交：两张表一起生效" style="shape=cylinder3;size=14;boundedLbl=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontColor=#172b4d;fontFamily=Helvetica;fontSize=17;spacing=12;strokeWidth=1.5;shadow=0;align=center;verticalAlign=middle;" vertex="1" parent="tx-upload" data-model-id="outbox-row" data-kind="database" data-properties="{&quot;scope&quot;:&quot;current implementation&quot;}" data-source-properties="{&quot;scope&quot;:&quot;current implementation&quot;}" data-source-label="&lt;b&gt;ingestion_outbox · PENDING&lt;/b&gt;&lt;br&gt;同一事务登记待发事件&lt;br&gt;T1 提交：两张表一起生效" data-provenance="{&quot;path&quot;:&quot;rag-ingestion/src/main/java/com/majm/rag/ingestion/infrastructure/persistence/IngestionOutboxRepository.java&quot;}">
+          <mxGeometry x="500" y="90" width="350" height="110" as="geometry" />
+        </mxCell>
+        <mxCell id="accepted" value="&lt;b&gt;返回文档 ID / PENDING&lt;/b&gt;&lt;br&gt;文档解析在后台异步执行" style="rounded=1;arcSize=12;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;fontColor=#172b4d;fontFamily=Helvetica;fontSize=17;spacing=12;strokeWidth=1.5;shadow=0;align=center;verticalAlign=middle;" vertex="1" parent="1" data-model-id="accepted" data-kind="gateway" data-properties="{&quot;scope&quot;:&quot;current implementation&quot;}" data-source-properties="{&quot;scope&quot;:&quot;current implementation&quot;}" data-source-label="&lt;b&gt;返回文档 ID / PENDING&lt;/b&gt;&lt;br&gt;文档解析在后台异步执行" data-provenance="{&quot;path&quot;:&quot;rag-ingestion/src/main/java/com/majm/rag/ingestion/application/DocumentUploadService.java&quot;}">
+          <mxGeometry x="1480" y="250" width="300" height="110" as="geometry" />
+        </mxCell>
+        <mxCell id="publisher" value="&lt;b&gt;批量领取并发送&lt;/b&gt;&lt;br&gt;FOR UPDATE SKIP LOCKED&lt;br&gt;默认每批 20 条 · fixedDelay 1 秒&lt;br&gt;事务内逐条 send().get()" style="rounded=1;arcSize=12;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontColor=#172b4d;fontFamily=Helvetica;fontSize=16;spacing=12;strokeWidth=1.5;shadow=0;align=center;verticalAlign=middle;" vertex="1" parent="tx-publish" data-model-id="publisher" data-kind="queue" data-properties="{&quot;scope&quot;:&quot;current implementation&quot;}" data-source-properties="{&quot;scope&quot;:&quot;current implementation&quot;}" data-source-label="&lt;b&gt;批量领取并发送&lt;/b&gt;&lt;br&gt;FOR UPDATE SKIP LOCKED&lt;br&gt;默认每批 20 条 · fixedDelay 1 秒&lt;br&gt;事务内逐条 send().get()" data-provenance="{&quot;path&quot;:&quot;rag-ingestion/src/main/java/com/majm/rag/ingestion/infrastructure/messaging/IngestionOutboxPublisher.java&quot;}">
+          <mxGeometry x="40" y="90" width="400" height="110" as="geometry" />
+        </mxCell>
+        <mxCell id="publication-result" value="&lt;b&gt;更新 Outbox 状态&lt;/b&gt;&lt;br&gt;ACK 成功 → PUBLISHED&lt;br&gt;失败 → 记录错误 / 下次重试时间&lt;br&gt;T2 结束才提交并释放行锁" style="shape=cylinder3;size=14;boundedLbl=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontColor=#172b4d;fontFamily=Helvetica;fontSize=16;spacing=12;strokeWidth=1.5;shadow=0;align=center;verticalAlign=middle;" vertex="1" parent="tx-publish" data-model-id="publication-result" data-kind="database" data-properties="{&quot;scope&quot;:&quot;current implementation&quot;}" data-source-properties="{&quot;scope&quot;:&quot;current implementation&quot;}" data-source-label="&lt;b&gt;更新 Outbox 状态&lt;/b&gt;&lt;br&gt;ACK 成功 → PUBLISHED&lt;br&gt;失败 → 记录错误 / 下次重试时间&lt;br&gt;T2 结束才提交并释放行锁" data-provenance="{&quot;path&quot;:&quot;rag-ingestion/src/main/java/com/majm/rag/ingestion/infrastructure/messaging/IngestionOutboxPublisher.java&quot;}">
+          <mxGeometry x="530" y="90" width="320" height="110" as="geometry" />
+        </mxCell>
+        <mxCell id="ingestion-topic" value="&lt;b&gt;Kafka · document.ingestion&lt;/b&gt;&lt;br&gt;3 分区 · 消息 key = documentId&lt;br&gt;消息仅含 documentId / kbId" style="rounded=1;arcSize=12;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontColor=#172b4d;fontFamily=Helvetica;fontSize=16;spacing=12;strokeWidth=1.5;shadow=0;align=center;verticalAlign=middle;" vertex="1" parent="1" data-model-id="ingestion-topic" data-kind="queue" data-properties="{&quot;scope&quot;:&quot;current implementation&quot;}" data-source-properties="{&quot;scope&quot;:&quot;current implementation&quot;}" data-source-label="&lt;b&gt;Kafka · document.ingestion&lt;/b&gt;&lt;br&gt;3 分区 · 消息 key = documentId&lt;br&gt;消息仅含 documentId / kbId" data-provenance="{&quot;path&quot;:&quot;rag-ingestion/src/main/java/com/majm/rag/ingestion/config/KafkaConfig.java&quot;}">
+          <mxGeometry x="1480" y="600" width="300" height="110" as="geometry" />
+        </mxCell>
+        <mxCell id="consumer" value="&lt;b&gt;IngestionConsumer&lt;/b&gt;&lt;br&gt;独立事务标记 PROCESSING&lt;br&gt;再调用 processor.process()" style="rounded=1;arcSize=12;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontColor=#172b4d;fontFamily=Helvetica;fontSize=16;spacing=12;strokeWidth=1.5;shadow=0;align=center;verticalAlign=middle;" vertex="1" parent="1" data-model-id="consumer" data-kind="service" data-properties="{&quot;scope&quot;:&quot;current implementation&quot;}" data-source-properties="{&quot;scope&quot;:&quot;current implementation&quot;}" data-source-label="&lt;b&gt;IngestionConsumer&lt;/b&gt;&lt;br&gt;独立事务标记 PROCESSING&lt;br&gt;再调用 processor.process()" data-provenance="{&quot;path&quot;:&quot;rag-ingestion/src/main/java/com/majm/rag/ingestion/infrastructure/messaging/IngestionConsumer.java&quot;}">
+          <mxGeometry x="50" y="990" width="300" height="110" as="geometry" />
+        </mxCell>
+        <mxCell id="lock-document" value="&lt;b&gt;锁定并校验 Document&lt;/b&gt;&lt;br&gt;findByIdForUpdate()&lt;br&gt;MISSING / DONE 直接跳过&lt;br&gt;校验 knowledgeBaseId" style="rounded=1;arcSize=12;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontColor=#172b4d;fontFamily=Helvetica;fontSize=16;spacing=12;strokeWidth=1.5;shadow=0;align=center;verticalAlign=middle;" vertex="1" parent="tx-process" data-model-id="lock-document" data-kind="service" data-properties="{&quot;scope&quot;:&quot;current implementation&quot;}" data-source-properties="{&quot;scope&quot;:&quot;current implementation&quot;}" data-source-label="&lt;b&gt;锁定并校验 Document&lt;/b&gt;&lt;br&gt;findByIdForUpdate()&lt;br&gt;MISSING / DONE 直接跳过&lt;br&gt;校验 knowledgeBaseId" data-provenance="{&quot;path&quot;:&quot;rag-ingestion/src/main/java/com/majm/rag/ingestion/application/IngestionProcessor.java&quot;}">
+          <mxGeometry x="40" y="100" width="320" height="110" as="geometry" />
+        </mxCell>
+        <mxCell id="parse-embed" value="&lt;b&gt;解析 → 分块 → Embedding&lt;/b&gt;&lt;br&gt;本地文件 / 抓取单个网页&lt;br&gt;Splitter → vectorStore.add()&lt;br&gt;模型调用也位于 T3 内" style="rounded=1;arcSize=12;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontColor=#172b4d;fontFamily=Helvetica;fontSize=16;spacing=12;strokeWidth=1.5;shadow=0;align=center;verticalAlign=middle;" vertex="1" parent="tx-process" data-model-id="parse-embed" data-kind="service" data-properties="{&quot;scope&quot;:&quot;current implementation&quot;}" data-source-properties="{&quot;scope&quot;:&quot;current implementation&quot;}" data-source-label="&lt;b&gt;解析 → 分块 → Embedding&lt;/b&gt;&lt;br&gt;本地文件 / 抓取单个网页&lt;br&gt;Splitter → vectorStore.add()&lt;br&gt;模型调用也位于 T3 内" data-provenance="{&quot;path&quot;:&quot;rag-ingestion/src/main/java/com/majm/rag/ingestion/application/IngestionProcessor.java&quot;}">
+          <mxGeometry x="500" y="100" width="320" height="110" as="geometry" />
+        </mxCell>
+        <mxCell id="vector-commit" value="&lt;b&gt;向量 + DONE 原子提交&lt;/b&gt;&lt;br&gt;确定性 chunk ID / upsert&lt;br&gt;裁剪旧尾部；JPA 脏检查更新文档&lt;br&gt;异常则 T3 整体回滚" style="shape=cylinder3;size=14;boundedLbl=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontColor=#172b4d;fontFamily=Helvetica;fontSize=16;spacing=12;strokeWidth=1.5;shadow=0;align=center;verticalAlign=middle;" vertex="1" parent="tx-process" data-model-id="vector-commit" data-kind="database" data-properties="{&quot;scope&quot;:&quot;current implementation&quot;}" data-source-properties="{&quot;scope&quot;:&quot;current implementation&quot;}" data-source-label="&lt;b&gt;向量 + DONE 原子提交&lt;/b&gt;&lt;br&gt;确定性 chunk ID / upsert&lt;br&gt;裁剪旧尾部；JPA 脏检查更新文档&lt;br&gt;异常则 T3 整体回滚" data-provenance="{&quot;path&quot;:&quot;rag-ingestion/src/main/java/com/majm/rag/ingestion/application/IngestionProcessor.java&quot;}">
+          <mxGeometry x="950" y="100" width="350" height="110" as="geometry" />
+        </mxCell>
+        <mxCell id="ingestion-failure" value="&lt;b&gt;消费异常处理&lt;/b&gt;&lt;br&gt;T3 回滚 → 独立事务标记 FAILED&lt;br&gt;重新抛出异常，交给错误处理器" style="rounded=1;arcSize=12;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;fontColor=#172b4d;fontFamily=Helvetica;fontSize=16;spacing=12;strokeWidth=1.5;shadow=0;align=center;verticalAlign=middle;" vertex="1" parent="1" data-model-id="ingestion-failure" data-kind="error" data-properties="{&quot;scope&quot;:&quot;current implementation&quot;}" data-source-properties="{&quot;scope&quot;:&quot;current implementation&quot;}" data-source-label="&lt;b&gt;消费异常处理&lt;/b&gt;&lt;br&gt;T3 回滚 → 独立事务标记 FAILED&lt;br&gt;重新抛出异常，交给错误处理器" data-provenance="{&quot;path&quot;:&quot;rag-ingestion/src/main/java/com/majm/rag/ingestion/infrastructure/messaging/IngestionConsumer.java&quot;}">
+          <mxGeometry x="50" y="1260" width="390" height="110" as="geometry" />
+        </mxCell>
+        <mxCell id="dead-letter" value="&lt;b&gt;document.ingestion.dlt&lt;/b&gt;&lt;br&gt;1 分区 · 留存失败消息&lt;br&gt;当前没有自动重放消费者" style="rounded=1;arcSize=12;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;fontColor=#172b4d;fontFamily=Helvetica;fontSize=16;spacing=12;strokeWidth=1.5;shadow=0;align=center;verticalAlign=middle;" vertex="1" parent="1" data-model-id="dead-letter" data-kind="error" data-properties="{&quot;scope&quot;:&quot;current implementation&quot;}" data-source-properties="{&quot;scope&quot;:&quot;current implementation&quot;}" data-source-label="&lt;b&gt;document.ingestion.dlt&lt;/b&gt;&lt;br&gt;1 分区 · 留存失败消息&lt;br&gt;当前没有自动重放消费者" data-provenance="{&quot;path&quot;:&quot;rag-ingestion/src/main/java/com/majm/rag/ingestion/config/KafkaConfig.java&quot;}">
+          <mxGeometry x="1480" y="1260" width="300" height="110" as="geometry" />
+        </mxCell>
+        <mxCell id="ingestion-flow-submit-storage-0" value="文件" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;strokeWidth=1.6;strokeColor=#52677d;fontColor=#334155;fontFamily=Helvetica;fontSize=14;labelBackgroundColor=#ffffff;exitX=0.5;exitY=1;entryX=0.5;entryY=0;exitDx=0;exitDy=0;entryDx=0;entryDy=0;" edge="1" parent="1" source="submit" target="storage" data-model-id="ingestion-flow-submit-storage-0" data-kind="flow" data-properties="{}" data-source-properties="{}" data-source-label="文件">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="ingestion-flow-submit-document-row-1" value="URL 仅登记地址" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;strokeWidth=1.6;strokeColor=#52677d;fontColor=#334155;fontFamily=Helvetica;fontSize=14;labelBackgroundColor=#ffffff;exitX=1;exitY=0.4;entryX=0.5;entryY=0;exitDx=0;exitDy=0;entryDx=0;entryDy=0;" edge="1" parent="1" source="submit" target="document-row" data-model-id="ingestion-flow-submit-document-row-1" data-kind="flow" data-properties="{}" data-source-properties="{}" data-source-label="URL 仅登记地址">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="650" y="206" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="ingestion-flow-storage-document-row-2" value="文件路径" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;strokeWidth=1.6;strokeColor=#52677d;fontColor=#334155;fontFamily=Helvetica;fontSize=14;labelBackgroundColor=#ffffff;exitX=1;exitY=0.5;entryX=0;entryY=0.6;exitDx=0;exitDy=0;entryDx=0;entryDy=0;" edge="1" parent="1" source="storage" target="document-row" data-model-id="ingestion-flow-storage-document-row-2" data-kind="flow" data-properties="{}" data-source-properties="{}" data-source-label="文件路径">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="400" y="370" />
+              <mxPoint x="400" y="316" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="ingestion-flow-document-row-outbox-row-3" value="登记事件" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;strokeWidth=1.6;strokeColor=#52677d;fontColor=#334155;fontFamily=Helvetica;fontSize=14;labelBackgroundColor=#ffffff;exitX=1;exitY=0.5;entryX=0;entryY=0.5;exitDx=0;exitDy=0;entryDx=0;entryDy=0;" edge="1" parent="1" source="document-row" target="outbox-row" data-model-id="ingestion-flow-document-row-outbox-row-3" data-kind="flow" data-properties="{}" data-source-properties="{}" data-source-label="登记事件">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="ingestion-flow-outbox-row-accepted-4" value="T1 提交后" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;strokeWidth=1.6;strokeColor=#52677d;fontColor=#334155;fontFamily=Helvetica;fontSize=14;labelBackgroundColor=#ffffff;exitX=1;exitY=0.5;entryX=0;entryY=0.5;exitDx=0;exitDy=0;entryDx=0;entryDy=0;" edge="1" parent="1" source="outbox-row" target="accepted" data-model-id="ingestion-flow-outbox-row-accepted-4" data-kind="flow" data-properties="{}" data-source-properties="{}" data-source-label="T1 提交后">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint as="offset" x="-60" y="-18" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="ingestion-flow-outbox-row-publisher-5" value="扫描已提交的事件" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;strokeWidth=1.6;strokeColor=#52677d;fontColor=#334155;fontFamily=Helvetica;fontSize=14;labelBackgroundColor=#ffffff;exitX=0.45;exitY=1;entryX=0;entryY=0.5;exitDx=0;exitDy=0;entryDx=0;entryDy=0;dashed=1;dashPattern=6 4;" edge="1" parent="1" source="outbox-row" target="publisher" data-model-id="ingestion-flow-outbox-row-publisher-5" data-kind="async" data-properties="{}" data-source-properties="{}" data-source-label="扫描已提交的事件">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="1107.5" y="460" />
+              <mxPoint x="400" y="460" />
+              <mxPoint x="400" y="655" />
+            </Array>
+            <mxPoint as="offset" x="0" y="-15" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="ingestion-flow-publisher-ingestion-topic-6" value="发送消息；单条等待 ACK 默认 10 秒" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;strokeWidth=1.6;strokeColor=#52677d;fontColor=#334155;fontFamily=Helvetica;fontSize=14;labelBackgroundColor=#ffffff;exitX=0.5;exitY=0;entryX=0.5;entryY=0;exitDx=0;exitDy=0;entryDx=0;entryDy=0;dashed=1;dashPattern=6 4;" edge="1" parent="1" source="publisher" target="ingestion-topic" data-model-id="ingestion-flow-publisher-ingestion-topic-6" data-kind="async" data-properties="{}" data-source-properties="{}" data-source-label="发送消息；单条等待 ACK 默认 10 秒">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="690" y="560" />
+              <mxPoint x="1630" y="560" />
+            </Array>
+            <mxPoint as="offset" x="0" y="-12" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="ingestion-flow-ingestion-topic-publication-result-7" value="ACK / 发送结果" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;strokeWidth=1.6;strokeColor=#52677d;fontColor=#334155;fontFamily=Helvetica;fontSize=14;labelBackgroundColor=#ffffff;exitX=0;exitY=0.65;entryX=1;entryY=0.65;exitDx=0;exitDy=0;entryDx=0;entryDy=0;" edge="1" parent="1" source="ingestion-topic" target="publication-result" data-model-id="ingestion-flow-ingestion-topic-publication-result-7" data-kind="flow" data-properties="{}" data-source-properties="{}" data-source-label="ACK / 发送结果">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="ingestion-flow-ingestion-topic-consumer-8" value="Kafka 投递 · group: rag-ingestion · 默认并发 3" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;strokeWidth=1.6;strokeColor=#52677d;fontColor=#334155;fontFamily=Helvetica;fontSize=14;labelBackgroundColor=#ffffff;exitX=0.5;exitY=1;entryX=0.5;entryY=0;exitDx=0;exitDy=0;entryDx=0;entryDy=0;dashed=1;dashPattern=6 4;" edge="1" parent="1" source="ingestion-topic" target="consumer" data-model-id="ingestion-flow-ingestion-topic-consumer-8" data-kind="async" data-properties="{}" data-source-properties="{}" data-source-label="Kafka 投递 · group: rag-ingestion · 默认并发 3">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="1630" y="830" />
+              <mxPoint x="200" y="830" />
+            </Array>
+            <mxPoint as="offset" x="0" y="-14" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="ingestion-flow-consumer-lock-document-9" value="开始 T3" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;strokeWidth=1.6;strokeColor=#52677d;fontColor=#334155;fontFamily=Helvetica;fontSize=14;labelBackgroundColor=#ffffff;exitX=1;exitY=0.5;entryX=0;entryY=0.5;exitDx=0;exitDy=0;entryDx=0;entryDy=0;" edge="1" parent="1" source="consumer" target="lock-document" data-model-id="ingestion-flow-consumer-lock-document-9" data-kind="flow" data-properties="{}" data-source-properties="{}" data-source-label="开始 T3">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="ingestion-flow-lock-document-parse-embed-10" value="处理未完成文档" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;strokeWidth=1.6;strokeColor=#52677d;fontColor=#334155;fontFamily=Helvetica;fontSize=14;labelBackgroundColor=#ffffff;exitX=1;exitY=0.5;entryX=0;entryY=0.5;exitDx=0;exitDy=0;entryDx=0;entryDy=0;" edge="1" parent="1" source="lock-document" target="parse-embed" data-model-id="ingestion-flow-lock-document-parse-embed-10" data-kind="flow" data-properties="{}" data-source-properties="{}" data-source-label="处理未完成文档">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="ingestion-flow-parse-embed-vector-commit-11" value="持久化" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;strokeWidth=1.6;strokeColor=#52677d;fontColor=#334155;fontFamily=Helvetica;fontSize=14;labelBackgroundColor=#ffffff;exitX=1;exitY=0.5;entryX=0;entryY=0.5;exitDx=0;exitDy=0;entryDx=0;entryDy=0;" edge="1" parent="1" source="parse-embed" target="vector-commit" data-model-id="ingestion-flow-parse-embed-vector-commit-11" data-kind="flow" data-properties="{}" data-source-properties="{}" data-source-label="持久化">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="ingestion-flow-parse-embed-ingestion-failure-12" value="处理异常" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;strokeWidth=1.6;strokeColor=#b85450;fontColor=#334155;fontFamily=Helvetica;fontSize=14;labelBackgroundColor=#ffffff;exitX=0.5;exitY=1;entryX=0.5;entryY=0;exitDx=0;exitDy=0;entryDx=0;entryDy=0;dashed=1;dashPattern=6 4;" edge="1" parent="1" source="parse-embed" target="ingestion-failure" data-model-id="ingestion-flow-parse-embed-ingestion-failure-12" data-kind="async" data-properties="{}" data-source-properties="{}" data-source-label="处理异常">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="1110" y="1210" />
+              <mxPoint x="245" y="1210" />
+            </Array>
+            <mxPoint as="offset" x="0" y="-12" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="ingestion-flow-ingestion-failure-consumer-13" value="可重试异常：1s / 2s / 4s" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;strokeWidth=1.6;strokeColor=#b85450;fontColor=#334155;fontFamily=Helvetica;fontSize=14;labelBackgroundColor=#ffffff;exitX=0;exitY=0.5;entryX=0;entryY=0.5;exitDx=0;exitDy=0;entryDx=0;entryDy=0;dashed=1;dashPattern=6 4;" edge="1" parent="1" source="ingestion-failure" target="consumer" data-model-id="ingestion-flow-ingestion-failure-consumer-13" data-kind="async" data-properties="{}" data-source-properties="{}" data-source-label="可重试异常：1s / 2s / 4s">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="20" y="1315" />
+              <mxPoint x="20" y="1045" />
+            </Array>
+            <mxPoint as="offset" x="135" y="0" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="ingestion-flow-ingestion-failure-dead-letter-14" value="重试耗尽 / 不可重试异常" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;strokeWidth=1.6;strokeColor=#b85450;fontColor=#334155;fontFamily=Helvetica;fontSize=14;labelBackgroundColor=#ffffff;exitX=1;exitY=0.5;entryX=0;entryY=0.5;exitDx=0;exitDy=0;entryDx=0;entryDy=0;dashed=1;dashPattern=6 4;" edge="1" parent="1" source="ingestion-failure" target="dead-letter" data-model-id="ingestion-flow-ingestion-failure-dead-letter-14" data-kind="async" data-properties="{}" data-source-properties="{}" data-source-label="重试耗尽 / 不可重试异常">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="ingestion-flow-legend-gateway" value="接口 / 编排" style="rounded=1;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;fontColor=#172b4d;fontSize=14;fontFamily=Helvetica;" vertex="1" parent="1">
+          <mxGeometry as="geometry" x="40" y="1490" width="170" height="30" />
+        </mxCell>
+        <mxCell id="ingestion-flow-legend-external" value="客户端 / 外部资源" style="rounded=1;html=1;fillColor=#f5f5f5;strokeColor=#666666;fontColor=#172b4d;fontSize=14;fontFamily=Helvetica;" vertex="1" parent="1">
+          <mxGeometry as="geometry" x="230" y="1490" width="170" height="30" />
+        </mxCell>
+        <mxCell id="ingestion-flow-legend-database" value="数据库 / 持久化" style="rounded=1;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontColor=#172b4d;fontSize=14;fontFamily=Helvetica;" vertex="1" parent="1">
+          <mxGeometry as="geometry" x="420" y="1490" width="170" height="30" />
+        </mxCell>
+        <mxCell id="ingestion-flow-legend-queue" value="消息 / 后台任务" style="rounded=1;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontColor=#172b4d;fontSize=14;fontFamily=Helvetica;" vertex="1" parent="1">
+          <mxGeometry as="geometry" x="610" y="1490" width="170" height="30" />
+        </mxCell>
+        <mxCell id="ingestion-flow-legend-service" value="业务组件" style="rounded=1;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontColor=#172b4d;fontSize=14;fontFamily=Helvetica;" vertex="1" parent="1">
+          <mxGeometry as="geometry" x="800" y="1490" width="170" height="30" />
+        </mxCell>
+        <mxCell id="ingestion-flow-legend-error" value="失败处理" style="rounded=1;html=1;fillColor=#f8cecc;strokeColor=#b85450;fontColor=#172b4d;fontSize=14;fontFamily=Helvetica;" vertex="1" parent="1">
+          <mxGeometry as="geometry" x="990" y="1490" width="170" height="30" />
+        </mxCell>
+        <mxCell id="ingestion-note" value="一致性边界：发送成功但 T2 尚未提交时崩溃，可能重复投递；消费端通过文档行锁、DONE 判断与确定性 chunk ID 实现幂等。" style="text;html=1;whiteSpace=wrap;fillColor=none;strokeColor=none;align=left;verticalAlign=middle;fontFamily=Helvetica;fontSize=16;fontColor=#52677d;fontStyle=0;" vertex="1" parent="1">
+          <mxGeometry as="geometry" x="40" y="1410" width="1790" height="40" />
+        </mxCell>
+        <mxCell id="ingestion-note-2" value="文件落盘后若 T1 回滚，可能遗留文件。绿色虚线框仅表示数据库事务范围；当前 T2 与 T3 都包含网络等待。" style="text;html=1;whiteSpace=wrap;fillColor=none;strokeColor=none;align=left;verticalAlign=middle;fontFamily=Helvetica;fontSize=15;fontColor=#52677d;fontStyle=0;" vertex="1" parent="1">
+          <mxGeometry as="geometry" x="40" y="1450" width="1790" height="35" />
+        </mxCell>
+        <mxCell id="ingestion-flow-title" value="02  /  文档摄入 · Outbox 与事务边界" style="text;html=1;whiteSpace=wrap;fillColor=none;strokeColor=none;align=left;verticalAlign=middle;fontFamily=Helvetica;fontSize=32;fontColor=#172b4d;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry as="geometry" x="40" y="30" width="1800" height="50" />
+        </mxCell>
+        <mxCell id="ingestion-flow-subtitle" value="按当前代码绘制 · T1 / T2 / T3 是独立数据库事务 · DB 与 Kafka 通过 Outbox 达到最终一致" style="text;html=1;whiteSpace=wrap;fillColor=none;strokeColor=none;align=left;verticalAlign=middle;fontFamily=Helvetica;fontSize=17;fontColor=#52677d;fontStyle=0;" vertex="1" parent="1">
+          <mxGeometry as="geometry" x="40" y="90" width="1800" height="40" />
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+  <diagram id="rag-flow" name="03 检索与问答">
+    <mxGraphModel dx="800" dy="600" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1800" pageHeight="1160" math="0" shadow="0" background="#ffffff">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+        <mxCell id="chat-request" value="&lt;b&gt;1 · ChatService&lt;/b&gt;&lt;br&gt;单轮问题 / 多轮对话&lt;br&gt;多轮读取 conversation 历史&lt;br&gt;默认最多 20 条历史消息" style="rounded=1;arcSize=12;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;fontColor=#172b4d;fontFamily=Helvetica;fontSize=17;spacing=12;strokeWidth=1.5;shadow=0;align=center;verticalAlign=middle;" vertex="1" parent="1" data-model-id="chat-request" data-kind="gateway" data-properties="{&quot;scope&quot;:&quot;current implementation&quot;}" data-source-properties="{&quot;scope&quot;:&quot;current implementation&quot;}" data-source-label="&lt;b&gt;1 · ChatService&lt;/b&gt;&lt;br&gt;单轮问题 / 多轮对话&lt;br&gt;多轮读取 conversation 历史&lt;br&gt;默认最多 20 条历史消息" data-provenance="{&quot;path&quot;:&quot;rag-chat/src/main/java/com/majm/rag/chat/application/ChatService.java&quot;}">
+          <mxGeometry x="50" y="200" width="350" height="140" as="geometry" />
+        </mxCell>
+        <mxCell id="rewrite-query" value="&lt;b&gt;2 · 查询改写&lt;/b&gt;&lt;br&gt;指代消解 → HyDE 假设文档&lt;br&gt;可配置 Multi-Query 扩展&lt;br&gt;整体超时 3 秒 → 回退原问题" style="rounded=1;arcSize=12;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontColor=#172b4d;fontFamily=Helvetica;fontSize=17;spacing=12;strokeWidth=1.5;shadow=0;align=center;verticalAlign=middle;" vertex="1" parent="1" data-model-id="rewrite-query" data-kind="service" data-properties="{&quot;scope&quot;:&quot;current implementation&quot;}" data-source-properties="{&quot;scope&quot;:&quot;current implementation&quot;}" data-source-label="&lt;b&gt;2 · 查询改写&lt;/b&gt;&lt;br&gt;指代消解 → HyDE 假设文档&lt;br&gt;可配置 Multi-Query 扩展&lt;br&gt;整体超时 3 秒 → 回退原问题" data-provenance="{&quot;path&quot;:&quot;rag-retrieval/src/main/java/com/majm/rag/retrieval/rewrite/QueryRewriteService.java&quot;}">
+          <mxGeometry x="530" y="200" width="350" height="140" as="geometry" />
+        </mxCell>
+        <mxCell id="vector-recall" value="&lt;b&gt;3 · Embedding + 向量召回&lt;/b&gt;&lt;br&gt;text-embedding-v3 → 相似度查询&lt;br&gt;metadata 限定 knowledge_base_id&lt;br&gt;默认候选 20；多查询可用 RRF 融合" style="rounded=1;arcSize=12;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontColor=#172b4d;fontFamily=Helvetica;fontSize=16;spacing=12;strokeWidth=1.5;shadow=0;align=center;verticalAlign=middle;" vertex="1" parent="1" data-model-id="vector-recall" data-kind="service" data-properties="{&quot;scope&quot;:&quot;current implementation&quot;}" data-source-properties="{&quot;scope&quot;:&quot;current implementation&quot;}" data-source-label="&lt;b&gt;3 · Embedding + 向量召回&lt;/b&gt;&lt;br&gt;text-embedding-v3 → 相似度查询&lt;br&gt;metadata 限定 knowledge_base_id&lt;br&gt;默认候选 20；多查询可用 RRF 融合" data-provenance="{&quot;path&quot;:&quot;rag-retrieval/src/main/java/com/majm/rag/retrieval/application/RetrievalService.java&quot;}">
+          <mxGeometry x="1010" y="200" width="350" height="140" as="geometry" />
+        </mxCell>
+        <mxCell id="search-api" value="&lt;b&gt;独立检索 API&lt;/b&gt;&lt;br&gt;POST .../{kbId}/search&lt;br&gt;直接调用 RetrievalService" style="rounded=1;arcSize=12;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;fontColor=#172b4d;fontFamily=Helvetica;fontSize=16;spacing=12;strokeWidth=1.5;shadow=0;align=center;verticalAlign=middle;" vertex="1" parent="1" data-model-id="search-api" data-kind="gateway" data-properties="{&quot;scope&quot;:&quot;current implementation&quot;}" data-source-properties="{&quot;scope&quot;:&quot;current implementation&quot;}" data-source-label="&lt;b&gt;独立检索 API&lt;/b&gt;&lt;br&gt;POST .../{kbId}/search&lt;br&gt;直接调用 RetrievalService" data-provenance="{&quot;path&quot;:&quot;rag-retrieval/src/main/java/com/majm/rag/retrieval/api/RetrievalController.java&quot;}">
+          <mxGeometry x="1450" y="200" width="300" height="140" as="geometry" />
+        </mxCell>
+        <mxCell id="rerank" value="&lt;b&gt;4 · Rerank 重排&lt;/b&gt;&lt;br&gt;默认 gte-rerank-v2&lt;br&gt;使用问题意图为候选重新评分&lt;br&gt;关闭 / 失败时保留召回顺序" style="rounded=1;arcSize=12;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontColor=#172b4d;fontFamily=Helvetica;fontSize=17;spacing=12;strokeWidth=1.5;shadow=0;align=center;verticalAlign=middle;" vertex="1" parent="1" data-model-id="rerank" data-kind="service" data-properties="{&quot;scope&quot;:&quot;current implementation&quot;}" data-source-properties="{&quot;scope&quot;:&quot;current implementation&quot;}" data-source-label="&lt;b&gt;4 · Rerank 重排&lt;/b&gt;&lt;br&gt;默认 gte-rerank-v2&lt;br&gt;使用问题意图为候选重新评分&lt;br&gt;关闭 / 失败时保留召回顺序" data-provenance="{&quot;path&quot;:&quot;rag-retrieval/src/main/java/com/majm/rag/retrieval/application/RetrievalService.java&quot;}">
+          <mxGeometry x="1010" y="490" width="350" height="140" as="geometry" />
+        </mxCell>
+        <mxCell id="filter-mmr" value="&lt;b&gt;5 · 阈值过滤 + MMR&lt;/b&gt;&lt;br&gt;阈值默认关闭&lt;br&gt;MMR 默认启用 · 抑制相似片段&lt;br&gt;得到最终 topK 上下文" style="rounded=1;arcSize=12;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontColor=#172b4d;fontFamily=Helvetica;fontSize=17;spacing=12;strokeWidth=1.5;shadow=0;align=center;verticalAlign=middle;" vertex="1" parent="1" data-model-id="filter-mmr" data-kind="service" data-properties="{&quot;scope&quot;:&quot;current implementation&quot;}" data-source-properties="{&quot;scope&quot;:&quot;current implementation&quot;}" data-source-label="&lt;b&gt;5 · 阈值过滤 + MMR&lt;/b&gt;&lt;br&gt;阈值默认关闭&lt;br&gt;MMR 默认启用 · 抑制相似片段&lt;br&gt;得到最终 topK 上下文" data-provenance="{&quot;path&quot;:&quot;rag-retrieval/src/main/java/com/majm/rag/retrieval/application/RetrievalService.java&quot;}">
+          <mxGeometry x="530" y="490" width="350" height="140" as="geometry" />
+        </mxCell>
+        <mxCell id="context" value="&lt;b&gt;6 · 组装本次上下文&lt;/b&gt;&lt;br&gt;选中 chunk 文本 + metadata&lt;br&gt;组成 Prompt 与 context 事件&lt;br&gt;空上下文时提示模型说明不足" style="rounded=1;arcSize=12;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;fontColor=#172b4d;fontFamily=Helvetica;fontSize=17;spacing=12;strokeWidth=1.5;shadow=0;align=center;verticalAlign=middle;" vertex="1" parent="1" data-model-id="context" data-kind="gateway" data-properties="{&quot;scope&quot;:&quot;current implementation&quot;}" data-source-properties="{&quot;scope&quot;:&quot;current implementation&quot;}" data-source-label="&lt;b&gt;6 · 组装本次上下文&lt;/b&gt;&lt;br&gt;选中 chunk 文本 + metadata&lt;br&gt;组成 Prompt 与 context 事件&lt;br&gt;空上下文时提示模型说明不足" data-provenance="{&quot;path&quot;:&quot;rag-chat/src/main/java/com/majm/rag/chat/application/ChatService.java&quot;}">
+          <mxGeometry x="50" y="490" width="350" height="140" as="geometry" />
+        </mxCell>
+        <mxCell id="vector-db" value="&lt;b&gt;PostgreSQL · vector_store&lt;/b&gt;&lt;br&gt;PgVectorStore&lt;br&gt;1024 维 · HNSW · cosine" style="shape=cylinder3;size=14;boundedLbl=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontColor=#172b4d;fontFamily=Helvetica;fontSize=16;spacing=12;strokeWidth=1.5;shadow=0;align=center;verticalAlign=middle;" vertex="1" parent="1" data-model-id="vector-db" data-kind="database" data-properties="{&quot;scope&quot;:&quot;current implementation&quot;}" data-source-properties="{&quot;scope&quot;:&quot;current implementation&quot;}" data-source-label="&lt;b&gt;PostgreSQL · vector_store&lt;/b&gt;&lt;br&gt;PgVectorStore&lt;br&gt;1024 维 · HNSW · cosine" data-provenance="{&quot;path&quot;:&quot;rag-app/src/main/java/com/majm/rag/config/VectorStoreConfig.java&quot;}">
+          <mxGeometry x="1450" y="490" width="300" height="140" as="geometry" />
+        </mxCell>
+        <mxCell id="generation" value="&lt;b&gt;7 · ChatClient 流式生成&lt;/b&gt;&lt;br&gt;默认 qwen-plus&lt;br&gt;系统提示 + 检索上下文&lt;br&gt;用户问题 / 多轮历史" style="rounded=1;arcSize=12;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontColor=#172b4d;fontFamily=Helvetica;fontSize=17;spacing=12;strokeWidth=1.5;shadow=0;align=center;verticalAlign=middle;" vertex="1" parent="1" data-model-id="generation" data-kind="service" data-properties="{&quot;scope&quot;:&quot;current implementation&quot;}" data-source-properties="{&quot;scope&quot;:&quot;current implementation&quot;}" data-source-label="&lt;b&gt;7 · ChatClient 流式生成&lt;/b&gt;&lt;br&gt;默认 qwen-plus&lt;br&gt;系统提示 + 检索上下文&lt;br&gt;用户问题 / 多轮历史" data-provenance="{&quot;path&quot;:&quot;rag-chat/src/main/java/com/majm/rag/chat/application/ChatService.java&quot;}">
+          <mxGeometry x="50" y="790" width="350" height="140" as="geometry" />
+        </mxCell>
+        <mxCell id="sse" value="&lt;b&gt;8 · SSE 返回前端&lt;/b&gt;&lt;br&gt;context → token → done&lt;br&gt;失败以结构化 error 结束&lt;br&gt;context 与实际回答依据一致" style="rounded=1;arcSize=12;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;fontColor=#172b4d;fontFamily=Helvetica;fontSize=17;spacing=12;strokeWidth=1.5;shadow=0;align=center;verticalAlign=middle;" vertex="1" parent="1" data-model-id="sse" data-kind="gateway" data-properties="{&quot;scope&quot;:&quot;current implementation&quot;}" data-source-properties="{&quot;scope&quot;:&quot;current implementation&quot;}" data-source-label="&lt;b&gt;8 · SSE 返回前端&lt;/b&gt;&lt;br&gt;context → token → done&lt;br&gt;失败以结构化 error 结束&lt;br&gt;context 与实际回答依据一致" data-provenance="{&quot;path&quot;:&quot;rag-chat/src/main/java/com/majm/rag/chat/api/ChatSseEvents.java&quot;}">
+          <mxGeometry x="530" y="790" width="350" height="140" as="geometry" />
+        </mxCell>
+        <mxCell id="conversation-db" value="&lt;b&gt;多轮对话持久化&lt;/b&gt;&lt;br&gt;conversation · JSONB / JPA&lt;br&gt;生成前保存用户消息&lt;br&gt;正常完成后追加 assistant 消息" style="shape=cylinder3;size=14;boundedLbl=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontColor=#172b4d;fontFamily=Helvetica;fontSize=16;spacing=12;strokeWidth=1.5;shadow=0;align=center;verticalAlign=middle;" vertex="1" parent="1" data-model-id="conversation-db" data-kind="database" data-properties="{&quot;scope&quot;:&quot;current implementation&quot;}" data-source-properties="{&quot;scope&quot;:&quot;current implementation&quot;}" data-source-label="&lt;b&gt;多轮对话持久化&lt;/b&gt;&lt;br&gt;conversation · JSONB / JPA&lt;br&gt;生成前保存用户消息&lt;br&gt;正常完成后追加 assistant 消息" data-provenance="{&quot;path&quot;:&quot;rag-chat/src/main/java/com/majm/rag/chat/application/ChatService.java&quot;}">
+          <mxGeometry x="1010" y="790" width="350" height="140" as="geometry" />
+        </mxCell>
+        <mxCell id="search-result" value="&lt;b&gt;/search 返回 topK 结果&lt;/b&gt;&lt;br&gt;JSON · 文本与 metadata" style="rounded=1;arcSize=12;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;fontColor=#172b4d;fontFamily=Helvetica;fontSize=16;spacing=12;strokeWidth=1.5;shadow=0;align=center;verticalAlign=middle;" vertex="1" parent="1" data-model-id="search-result" data-kind="gateway" data-properties="{&quot;scope&quot;:&quot;current implementation&quot;}" data-source-properties="{&quot;scope&quot;:&quot;current implementation&quot;}" data-source-label="&lt;b&gt;/search 返回 topK 结果&lt;/b&gt;&lt;br&gt;JSON · 文本与 metadata" data-provenance="{&quot;path&quot;:&quot;rag-retrieval/src/main/java/com/majm/rag/retrieval/api/RetrievalController.java&quot;}">
+          <mxGeometry x="1450" y="680" width="300" height="80" as="geometry" />
+        </mxCell>
+        <mxCell id="rag-flow-chat-request-rewrite-query-0" value="问题 / 历史" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;strokeWidth=1.6;strokeColor=#52677d;fontColor=#334155;fontFamily=Helvetica;fontSize=14;labelBackgroundColor=#ffffff;exitX=1;exitY=0.5;entryX=0;entryY=0.5;exitDx=0;exitDy=0;entryDx=0;entryDy=0;" edge="1" parent="1" source="chat-request" target="rewrite-query" data-model-id="rag-flow-chat-request-rewrite-query-0" data-kind="flow" data-properties="{}" data-source-properties="{}" data-source-label="问题 / 历史">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="rag-flow-rewrite-query-vector-recall-1" value="检索文本" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;strokeWidth=1.6;strokeColor=#52677d;fontColor=#334155;fontFamily=Helvetica;fontSize=14;labelBackgroundColor=#ffffff;exitX=1;exitY=0.5;entryX=0;entryY=0.5;exitDx=0;exitDy=0;entryDx=0;entryDy=0;" edge="1" parent="1" source="rewrite-query" target="vector-recall" data-model-id="rag-flow-rewrite-query-vector-recall-1" data-kind="flow" data-properties="{}" data-source-properties="{}" data-source-label="检索文本">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="rag-flow-search-api-vector-recall-2" value="原问题" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;strokeWidth=1.6;strokeColor=#52677d;fontColor=#334155;fontFamily=Helvetica;fontSize=14;labelBackgroundColor=#ffffff;exitX=0;exitY=0.5;entryX=1;entryY=0.5;exitDx=0;exitDy=0;entryDx=0;entryDy=0;" edge="1" parent="1" source="search-api" target="vector-recall" data-model-id="rag-flow-search-api-vector-recall-2" data-kind="flow" data-properties="{}" data-source-properties="{}" data-source-label="原问题">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="rag-flow-vector-recall-rerank-3" value="候选 chunk" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;strokeWidth=1.6;strokeColor=#52677d;fontColor=#334155;fontFamily=Helvetica;fontSize=14;labelBackgroundColor=#ffffff;exitX=0.5;exitY=1;entryX=0.5;entryY=0;exitDx=0;exitDy=0;entryDx=0;entryDy=0;" edge="1" parent="1" source="vector-recall" target="rerank" data-model-id="rag-flow-vector-recall-rerank-3" data-kind="flow" data-properties="{}" data-source-properties="{}" data-source-label="候选 chunk">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="rag-flow-vector-recall-vector-db-4" value="相似度查询" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;strokeWidth=1.6;strokeColor=#52677d;fontColor=#334155;fontFamily=Helvetica;fontSize=14;labelBackgroundColor=#ffffff;exitX=1;exitY=0.85;entryX=0;entryY=0.5;exitDx=0;exitDy=0;entryDx=0;entryDy=0;" edge="1" parent="1" source="vector-recall" target="vector-db" data-model-id="rag-flow-vector-recall-vector-db-4" data-kind="flow" data-properties="{}" data-source-properties="{}" data-source-label="相似度查询">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="1400" y="319" />
+              <mxPoint x="1400" y="560" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="rag-flow-rerank-filter-mmr-5" value="重排候选" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;strokeWidth=1.6;strokeColor=#52677d;fontColor=#334155;fontFamily=Helvetica;fontSize=14;labelBackgroundColor=#ffffff;exitX=0;exitY=0.5;entryX=1;entryY=0.5;exitDx=0;exitDy=0;entryDx=0;entryDy=0;" edge="1" parent="1" source="rerank" target="filter-mmr" data-model-id="rag-flow-rerank-filter-mmr-5" data-kind="flow" data-properties="{}" data-source-properties="{}" data-source-label="重排候选">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="rag-flow-filter-mmr-context-6" value="对话上下文" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;strokeWidth=1.6;strokeColor=#52677d;fontColor=#334155;fontFamily=Helvetica;fontSize=14;labelBackgroundColor=#ffffff;exitX=0;exitY=0.5;entryX=1;entryY=0.5;exitDx=0;exitDy=0;entryDx=0;entryDy=0;" edge="1" parent="1" source="filter-mmr" target="context" data-model-id="rag-flow-filter-mmr-context-6" data-kind="flow" data-properties="{}" data-source-properties="{}" data-source-label="对话上下文">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="rag-flow-filter-mmr-search-result-7" value="独立检索路径" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;strokeWidth=1.6;strokeColor=#52677d;fontColor=#334155;fontFamily=Helvetica;fontSize=14;labelBackgroundColor=#ffffff;exitX=0.8;exitY=1;entryX=0;entryY=0.5;exitDx=0;exitDy=0;entryDx=0;entryDy=0;" edge="1" parent="1" source="filter-mmr" target="search-result" data-model-id="rag-flow-filter-mmr-search-result-7" data-kind="flow" data-properties="{}" data-source-properties="{}" data-source-label="独立检索路径">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="810" y="720" />
+            </Array>
+            <mxPoint as="offset" x="0" y="-15" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="rag-flow-context-generation-8" value="Prompt" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;strokeWidth=1.6;strokeColor=#52677d;fontColor=#334155;fontFamily=Helvetica;fontSize=14;labelBackgroundColor=#ffffff;exitX=0.5;exitY=1;entryX=0.5;entryY=0;exitDx=0;exitDy=0;entryDx=0;entryDy=0;" edge="1" parent="1" source="context" target="generation" data-model-id="rag-flow-context-generation-8" data-kind="flow" data-properties="{}" data-source-properties="{}" data-source-label="Prompt">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="rag-flow-generation-sse-9" value="token 流" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;strokeWidth=1.6;strokeColor=#52677d;fontColor=#334155;fontFamily=Helvetica;fontSize=14;labelBackgroundColor=#ffffff;exitX=1;exitY=0.5;entryX=0;entryY=0.5;exitDx=0;exitDy=0;entryDx=0;entryDy=0;" edge="1" parent="1" source="generation" target="sse" data-model-id="rag-flow-generation-sse-9" data-kind="flow" data-properties="{}" data-source-properties="{}" data-source-label="token 流">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="rag-flow-sse-conversation-db-10" value="多轮正常完成" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;strokeWidth=1.6;strokeColor=#52677d;fontColor=#334155;fontFamily=Helvetica;fontSize=14;labelBackgroundColor=#ffffff;exitX=1;exitY=0.5;entryX=0;entryY=0.5;exitDx=0;exitDy=0;entryDx=0;entryDy=0;" edge="1" parent="1" source="sse" target="conversation-db" data-model-id="rag-flow-sse-conversation-db-10" data-kind="flow" data-properties="{}" data-source-properties="{}" data-source-label="多轮正常完成">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="rag-flow-legend-gateway" value="接口 / 编排" style="rounded=1;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;fontColor=#172b4d;fontSize=14;fontFamily=Helvetica;" vertex="1" parent="1">
+          <mxGeometry as="geometry" x="40" y="1100" width="170" height="30" />
+        </mxCell>
+        <mxCell id="rag-flow-legend-service" value="业务组件" style="rounded=1;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontColor=#172b4d;fontSize=14;fontFamily=Helvetica;" vertex="1" parent="1">
+          <mxGeometry as="geometry" x="230" y="1100" width="170" height="30" />
+        </mxCell>
+        <mxCell id="rag-flow-legend-database" value="数据库 / 持久化" style="rounded=1;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontColor=#172b4d;fontSize=14;fontFamily=Helvetica;" vertex="1" parent="1">
+          <mxGeometry as="geometry" x="420" y="1100" width="170" height="30" />
+        </mxCell>
+        <mxCell id="provider-note" value="&lt;b&gt;模型接入&lt;/b&gt;&lt;br&gt;Chat / Embedding 使用&lt;br&gt;Spring AI OpenAI 兼容接口；&lt;br&gt;Rerank 使用百炼原生接口。&lt;br&gt;服务地址与模型均可配置。" style="text;html=1;whiteSpace=wrap;fillColor=none;strokeColor=none;align=left;verticalAlign=middle;fontFamily=Helvetica;fontSize=17;fontColor=#52677d;fontStyle=0;" vertex="1" parent="1">
+          <mxGeometry as="geometry" x="1450" y="780" width="300" height="160" />
+        </mxCell>
+        <mxCell id="rag-note" value="图中为逻辑调用顺序；独立 /search 返回检索结果，单轮 /chat 不写 conversation。多轮回复在 token 流正常完成后追加保存。" style="text;html=1;whiteSpace=wrap;fillColor=none;strokeColor=none;align=left;verticalAlign=middle;fontFamily=Helvetica;fontSize=16;fontColor=#52677d;fontStyle=0;" vertex="1" parent="1">
+          <mxGeometry as="geometry" x="40" y="990" width="1710" height="40" />
+        </mxCell>
+        <mxCell id="rag-note-2" value="默认参数来自 application.yml；查询改写和重排失败时降级，模型生成错误由 SSE error 反馈。" style="text;html=1;whiteSpace=wrap;fillColor=none;strokeColor=none;align=left;verticalAlign=middle;fontFamily=Helvetica;fontSize=15;fontColor=#52677d;fontStyle=0;" vertex="1" parent="1">
+          <mxGeometry as="geometry" x="40" y="1030" width="1710" height="35" />
+        </mxCell>
+        <mxCell id="rag-flow-title" value="03  /  RAG 检索 · 上下文 · 流式问答" style="text;html=1;whiteSpace=wrap;fillColor=none;strokeColor=none;align=left;verticalAlign=middle;fontFamily=Helvetica;fontSize=32;fontColor=#172b4d;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry as="geometry" x="40" y="30" width="1720" height="50" />
+        </mxCell>
+        <mxCell id="rag-flow-subtitle" value="对话默认：conversational + HyDE；Multi-Query 可选 · 直接 /search 跳过查询改写和答案生成" style="text;html=1;whiteSpace=wrap;fillColor=none;strokeColor=none;align=left;verticalAlign=middle;fontFamily=Helvetica;fontSize=17;fontColor=#52677d;fontStyle=0;" vertex="1" parent="1">
+          <mxGeometry as="geometry" x="40" y="90" width="1720" height="40" />
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>

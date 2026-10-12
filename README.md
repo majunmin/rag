@@ -24,6 +24,9 @@
 详细架构与设计：见 [`docs/architecture/`](docs/architecture/)，模块开发规则见
 [`MODULE_GUIDE.md`](docs/architecture/MODULE_GUIDE.md)。
 
+可编辑架构图：[`rag-architecture.drawio`](docs/architecture/diagrams/rag-architecture.drawio)，
+包含总体架构、摄入事务、检索问答三页；[查看图片与代码索引](docs/architecture/diagrams/README.md)。
+
 ---
 
 ## 快速开始（本地开发）
